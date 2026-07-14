@@ -1,6 +1,5 @@
-const { put, list } = require('@vercel/blob');
+import { put, list } from '@vercel/blob';
 
-// Everything small/structured lives in one JSON file in your Blob store.
 const STATE_PATHNAME = 'lamp-ceremony/state.json';
 
 const DEFAULT_STATE = {
@@ -11,20 +10,31 @@ const DEFAULT_STATE = {
 };
 
 async function readState() {
-  // list() (rather than a guessed URL) is the reliable way to find the
-  // blob's current URL, since Vercel Blob store hostnames are per-store.
-  const { blobs } = await list({ prefix: STATE_PATHNAME, limit: 1 });
-  const match = blobs.find((b) => b.pathname === STATE_PATHNAME);
-  if (!match) return DEFAULT_STATE;
+  try {
+    const { blobs } = await list({ prefix: STATE_PATHNAME, limit: 1 });
+    const match = blobs.find((b) => b.pathname === STATE_PATHNAME);
+    
+    // If no file exists, return defaults
+    if (!match) {
+      console.log('No existing state file found, using defaults');
+      return DEFAULT_STATE;
+    }
 
-  const res = await fetch(match.url, { cache: 'no-store' });
-  if (!res.ok) return DEFAULT_STATE;
+    const res = await fetch(match.url, { cache: 'no-store' });
+    if (!res.ok) {
+      console.log(`Failed to fetch state: ${res.status}, using defaults`);
+      return DEFAULT_STATE;
+    }
 
-  const data = await res.json();
-  return Object.assign({}, DEFAULT_STATE, data);
+    const data = await res.json();
+    return Object.assign({}, DEFAULT_STATE, data);
+  } catch (err) {
+    console.error('Error reading state:', err);
+    return DEFAULT_STATE;
+  }
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const state = await readState();
@@ -44,7 +54,7 @@ module.exports = async (req, res) => {
         addRandomSuffix: false,
         allowOverwrite: true,
         contentType: 'application/json',
-        cacheControlMaxAge: 60 // minimum allowed; keeps reads reasonably fresh
+        cacheControlMaxAge: 60
       });
 
       res.status(200).json({ ok: true });
@@ -57,4 +67,4 @@ module.exports = async (req, res) => {
     console.error('api/state error:', err);
     res.status(500).json({ error: 'Server error', message: err.message });
   }
-};
+}
