@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lamp Lighting Ceremony &mdash; Virtual Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#05060d;
+    --bg-2:#080b16;
+    --trace-dim:#1c2740;
+    --cyan:#57e3ff;
+    --violet:#a06bff;
+    --white-hot:#eef7ff;
+    --ink:#e6ecf7;
+    --ink-dim:#7c8aab;
+    --panel-bg:rgba(9,12,22,0.92);
+    --panel-border:rgba(120,150,220,0.18);
+    --radius:14px;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter', sans-serif;
+    overflow:hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+  }
+
+  .stage-root{
+    position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse 70% 55% at 50% 60%, #0d1424 0%, #05060d 62%, #020207 100%);
+  }
+
+  /* ambient light beams, like the reference photo */
+  .beam{
+    position:absolute; top:-10%; width:46%; height:120%;
+    opacity:0.10; mix-blend-mode:screen; pointer-events:none;
+  }
+  .beam.left{ left:-12%; background:linear-gradient(115deg, transparent 40%, var(--cyan) 46%, transparent 60%); transform:rotate(4deg); }
+  .beam.right{ right:-12%; background:linear-gradient(245deg, transparent 40%, var(--cyan) 46%, transparent 60%); transform:rotate(-4deg); }
+
+  .twinkle{ position:absolute; border-radius:50%; background:#bfe6ff; opacity:0; pointer-events:none; }
+  @keyframes twinkleFade{ 0%,100%{opacity:0;} 50%{opacity:.75;} }
+
+  svg#scene{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  /* ---------- lamp visuals ---------- */
+  .trace-dim{ fill:none; stroke:var(--trace-dim); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; opacity:0.55; }
+  .trace-bright{ fill:none; stroke:url(#traceGradient); stroke-width:2.6; stroke-linecap:round; stroke-linejoin:round;
+    filter:url(#glowSoft); transition:stroke-dashoffset 0.75s cubic-bezier(.2,.7,.25,1); }
+  .pulse-dot{ fill:var(--white-hot); filter:url(#glowStrong); opacity:0; }
+
+  .lamp-group{ cursor:pointer; }
+  .lamp-inner{ transition:transform .25s ease; transform-box:fill-box; transform-origin:center; }
+  .lamp-group:hover .lamp-inner{ transform:scale(1.08); }
+  .lamp-group.learn-target .lamp-inner{ animation:selectPulse 1s ease-in-out infinite; }
+  @keyframes selectPulse{ 0%,100%{filter:drop-shadow(0 0 0 rgba(160,107,255,0));} 50%{filter:drop-shadow(0 0 10px rgba(160,107,255,0.9));} }
+
+  .lamp-housing{ fill:#11141f; stroke:#2a3252; stroke-width:1.4; }
+  .lamp-glass{ fill:#12151f; opacity:0.9; }
+  .lamp-core{ fill:url(#lampCoreGradient); opacity:0; transition:opacity .5s ease; }
+  .lamp-group.lit .lamp-core{ opacity:1; }
+  .lamp-bloom{ fill:url(#bloomGradient); opacity:0; filter:url(#glowSoft); transition:opacity .6s ease; }
+  .lamp-group.lit .lamp-bloom{ opacity:0.85; }
+  .lamp-finial{ fill:#3a4670; }
+  .lamp-group.lit .lamp-finial{ fill:var(--cyan); }
+  .lamp-id-tag{ fill:#4a5680; font-family:'JetBrains Mono', monospace; font-size:9px; opacity:0; transition:opacity .3s ease; }
+  .lamp-group.has-id .lamp-id-tag{ opacity:0.85; }
+
+  @keyframes ignite{ 0%{ transform:scale(1); } 35%{ transform:scale(1.28); } 100%{ transform:scale(1); } }
+  .lamp-group.flash .lamp-inner{ animation:ignite .5s ease-out; }
+
+  /* tree */
+  .tree-line{ fill:none; stroke:var(--trace-dim); stroke-width:2; stroke-linecap:round; opacity:0.35; }
+  .tree-line.reveal{ stroke:url(#traceGradient); opacity:1; filter:url(#glowSoft); transition:stroke-dashoffset 1.1s cubic-bezier(.2,.7,.25,1), opacity .4s ease; }
+  .tree-node{ fill:#22284a; opacity:0.5; transition:opacity .5s ease, fill .5s ease; }
+  .tree-node.reveal{ fill:var(--cyan); opacity:1; filter:url(#glowSoft); }
+  .tree-glow-pulse{ opacity:0; }
+  .tree-wrap.tree-visible .tree-glow-pulse{ animation:treeBreathe 3.2s ease-in-out infinite; }
+  @keyframes treeBreathe{ 0%,100%{opacity:0.55;} 50%{opacity:0.95;} }
+
+  .hub-core{ fill:#0d0f1a; stroke:#2a3252; stroke-width:1.5; }
+  .hub-core.lit{ fill:url(#lampCoreGradient); filter:url(#glowStrong); }
+
+  /* stage floor rings */
+  .floor-ring{ fill:none; stroke:#151b30; stroke-width:1; }
+
+  /* ---------- top-right menu ---------- */
+  .menu-btn{
+    position:fixed; top:20px; right:20px; z-index:50;
+    width:48px; height:48px; border-radius:50%;
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; backdrop-filter:blur(6px);
+    box-shadow:0 0 0 rgba(87,227,255,0);
+    transition:box-shadow .3s ease, border-color .3s ease;
+  }
+  .menu-btn:hover{ border-color:rgba(87,227,255,0.5); box-shadow:0 0 18px rgba(87,227,255,0.25); }
+  .menu-btn svg{ width:20px; height:20px; }
+  .menu-btn .dot{ position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:#4a5680; box-shadow:0 0 6px rgba(0,0,0,0.5); }
+  .menu-btn .dot.connected{ background:#4be08a; box-shadow:0 0 8px #4be08a; }
+
+  .panel{
+    position:fixed; top:20px; right:20px; z-index:60;
+    width:340px; max-height:calc(100vh - 40px);
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    border-radius:var(--radius); backdrop-filter:blur(10px);
+    box-shadow:0 20px 60px rgba(0,0,0,0.6);
+    transform:translateX(calc(100% + 40px)); opacity:0;
+    transition:transform .35s cubic-bezier(.2,.8,.25,1), opacity .3s ease;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .panel.open{ transform:translateX(0); opacity:1; }
+  .panel-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--panel-border);
+  }
+  .panel-header h2{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:17px; letter-spacing:0.03em; margin:0; }
+  .panel-close{ cursor:pointer; color:var(--ink-dim); background:none; border:none; font-size:18px; padding:4px; line-height:1; }
+  .panel-close:hover{ color:var(--ink); }
+  .panel-body{ padding:14px 18px 20px; overflow-y:auto; }
+
+  .menu-list{ list-style:none; margin:0; padding:8px; }
+  .menu-item{
+    display:flex; align-items:center; gap:12px;
+    padding:12px 12px; border-radius:10px; cursor:pointer;
+    font-size:14px; font-weight:500; color:var(--ink);
+    transition:background .2s ease;
+  }
+  .menu-item:hover{ background:rgba(87,227,255,0.08); }
+  .menu-item .ic{ width:20px; height:20px; flex-shrink:0; color:var(--cyan); }
+  .menu-item small{ display:block; color:var(--ink-dim); font-weight:400; font-size:11.5px; margin-top:2px; }
+
+  .subpanel-title{ font-family:'Rajdhani',sans-serif; font-weight:600; font-size:13px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.08em; margin:14px 4px 8px; }
+
+  .lamp-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .lamp-toggle{
+    position:relative; padding:10px 6px; border-radius:9px; text-align:center;
+    background:#0d0f1a; border:1px solid rgba(120,150,220,0.16);
+    cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-dim);
+    transition:all .2s ease;
+  }
+  .lamp-toggle .n{ font-weight:600; color:var(--ink); }
+  .lamp-toggle.on{ border-color:rgba(87,227,255,0.55); background:rgba(87,227,255,0.08); color:var(--cyan); box-shadow:0 0 12px rgba(87,227,255,0.18) inset; }
+  .lamp-toggle.on .n{ color:var(--cyan); }
+  .lamp-toggle:active{ transform:scale(0.95); }
+
+  .row{ display:flex; gap:8px; margin-top:10px; }
+  .btn{
+    flex:1; padding:10px 12px; border-radius:9px; border:1px solid var(--panel-border);
+    background:#0d0f1a; color:var(--ink); font-size:13px; font-weight:500; cursor:pointer;
+    font-family:'Inter',sans-serif; transition:all .2s ease;
+  }
+  .btn:hover{ border-color:rgba(87,227,255,0.5); color:var(--cyan); }
+  .btn.primary{ background:linear-gradient(135deg, rgba(87,227,255,0.16), rgba(160,107,255,0.16)); border-color:rgba(87,227,255,0.4); }
+  .btn.danger:hover{ border-color:#ff6b7c; color:#ff6b7c; }
+
+  .status-line{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-dim); margin-top:12px; }
+  .status-dot{ width:8px; height:8px; border-radius:50%; background:#4a5680; }
+  .status-dot.on{ background:#4be08a; box-shadow:0 0 6px #4be08a; }
+  .status-dot.busy{ background:#f2b94c; box-shadow:0 0 6px #f2b94c; animation:blink 1s infinite; }
+  @keyframes blink{ 50%{ opacity:0.3; } }
+
+  input.text-in{
+    width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--panel-border);
+    background:#0a0c16; color:var(--ink); font-family:'JetBrains Mono',monospace; font-size:13px;
+    outline:none;
+  }
+  input.text-in:focus{ border-color:rgba(87,227,255,0.55); }
+  label.field-label{ display:block; font-size:11.5px; color:var(--ink-dim); margin:10px 0 5px; }
+
+  .id-table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:12px; }
+  .id-table th{ text-align:left; color:var(--ink-dim); font-weight:500; padding:5px 4px; border-bottom:1px solid var(--panel-border); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .id-table td{ padding:6px 4px; border-bottom:1px solid rgba(120,150,220,0.08); font-family:'JetBrains Mono',monospace; }
+  .id-table .clear-id{ color:var(--ink-dim); cursor:pointer; font-family:'Inter',sans-serif; }
+  .id-table .clear-id:hover{ color:#ff6b7c; }
+  .id-table tr.assigned td:first-child{ color:var(--cyan); }
+  .id-table tr.unassigned td{ color:#4a5680; }
+
+  .learn-banner{
+    background:rgba(160,107,255,0.1); border:1px solid rgba(160,107,255,0.35);
+    border-radius:9px; padding:10px 12px; font-size:12.5px; color:#cdb9ff; margin-bottom:10px;
+    display:flex; gap:8px; align-items:flex-start;
+  }
+  .learn-select-hint{ font-size:12px; color:var(--ink-dim); margin-top:8px; }
+
+  .toast{
+    position:fixed; left:50%; bottom:78px; transform:translateX(-50%) translateY(20px);
+    background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:10px;
+    padding:11px 18px; font-size:13px; color:var(--ink); z-index:80; opacity:0;
+    transition:all .3s ease; pointer-events:none; white-space:nowrap;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.err{ border-color:rgba(255,107,124,0.5); color:#ff9aa6; }
+  .toast.ok{ border-color:rgba(75,224,138,0.5); color:#8ef0b0; }
+
+  /* bottom status readout */
+  .status-bar{
+    position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+    z-index:40; display:flex; align-items:center; gap:16px;
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    border-radius:999px; padding:9px 20px; backdrop-filter:blur(8px);
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink-dim);
+  }
+  .status-bar .count{ color:var(--ink); font-weight:600; }
+  .status-bar .count .lit-num{ color:var(--cyan); }
+  .status-bar .sep{ width:1px; height:14px; background:var(--panel-border); }
+  .status-bar .conn{ display:flex; align-items:center; gap:6px; }
+
+  .assign-inline{
+    position:absolute; z-index:70; background:var(--panel-bg); border:1px solid rgba(160,107,255,0.4);
+    border-radius:10px; padding:12px; width:210px; box-shadow:0 12px 40px rgba(0,0,0,0.6);
+    display:none; flex-direction:column; gap:8px;
+  }
+  .assign-inline.show{ display:flex; }
+  .assign-inline .t{ font-size:12px; color:var(--ink-dim); }
+  .assign-inline .t b{ color:var(--cyan); }
+
+  ::-webkit-scrollbar{ width:6px; }
+  ::-webkit-scrollbar-thumb{ background:#2a3252; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="stage-root">
+  <div class="beam left"></div>
+  <div class="beam right"></div>
+  <div id="twinkles"></div>
+
+  <svg id="scene" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="traceGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#57e3ff"/>
+        <stop offset="100%" stop-color="#a06bff"/>
+      </linearGradient>
+      <radialGradient id="lampCoreGradient" cx="50%" cy="35%" r="70%">
+        <stop offset="0%" stop-color="#f5fbff"/>
+        <stop offset="35%" stop-color="#7fe9ff"/>
+        <stop offset="100%" stop-color="#8a5bff"/>
+      </radialGradient>
+      <radialGradient id="bloomGradient" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#7fe9ff" stop-opacity="0.55"/>
+        <stop offset="100%" stop-color="#7fe9ff" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="glowSoft" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="3.2" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glowStrong" x="-120%" y="-120%" width="340%" height="340%">
+        <feGaussianBlur stdDeviation="6" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+
+    <!-- stage floor rings -->
+    <g id="floorRings"></g>
+
+    <!-- circuit traces (dim base + bright animated overlay) -->
+    <g id="tracesDim"></g>
+    <g id="tracesBright"></g>
+    <g id="pulseDots"></g>
+
+    <!-- tree -->
+    <g id="treeWrap" class="tree-wrap"></g>
+
+    <!-- hub -->
+    <circle id="hubCore" class="hub-core" r="10"></circle>
+
+    <!-- lamps -->
+    <g id="lampsLayer"></g>
+  </svg>
+
+  <div id="assignInline" class="assign-inline">
+    <div class="t">Assign card ID to <b id="assignLampLabel">Lamp 01</b></div>
+    <input type="text" id="assignIdInput" class="text-in" placeholder="Scan or type card ID">
+    <div class="row" style="margin-top:2px;">
+      <button class="btn primary" id="assignConfirmBtn">Assign</button>
+      <button class="btn" id="assignCancelBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- menu button -->
+<button class="menu-btn" id="menuBtn" aria-label="Open controls menu">
+  <span class="dot" id="connDot"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="#cfe3ff" stroke-width="2" stroke-linecap="round">
+    <line x1="4" y1="7" x2="20" y2="7"></line>
+    <line x1="4" y1="12" x2="20" y2="12"></line>
+    <line x1="4" y1="17" x2="20" y2="17"></line>
+  </svg>
+</button>
+
+<!-- main menu panel -->
+<div class="panel" id="mainPanel">
+  <div class="panel-header">
+    <h2>Ceremony Controls</h2>
+    <button class="panel-close" data-close="mainPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <ul class="menu-list">
+      <li class="menu-item" data-action="open-connect">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 0116 0M7.5 12a4.5 4.5 0 019 0M12 12v6"/><circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"/></svg>
+        <div>Connect controller<small>Link the physical NFC / trigger controller</small></div>
+      </li>
+      <li class="menu-item" data-action="open-manual">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01"/></svg>
+        <div>Manual control<small>Light or turn off each lamp by hand</small></div>
+      </li>
+      <li class="menu-item" data-action="turn-on-all">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.4"/></svg>
+        <div>Turn on all lamps<small>Light every lamp in sequence</small></div>
+      </li>
+      <li class="menu-item" data-action="reset-all">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <div>Reset (turn off all)<small>Clear the display back to dark</small></div>
+      </li>
+      <li class="menu-item" data-action="open-learn">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div>ID learner<small>Assign an NFC card ID to one lamp</small></div>
+      </li>
+    </ul>
+    <div class="status-line"><span class="status-dot" id="connDotSmall"></span><span id="connLabel">Controller not connected</span></div>
+  </div>
+</div>
+
+<!-- connect controller panel -->
+<div class="panel" id="connectPanel">
+  <div class="panel-header">
+    <h2>Connect Controller</h2>
+    <button class="panel-close" data-close="connectPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;margin-top:0;">
+      Talks to your Arduino directly over USB using the Web Serial API (9600 baud,
+      expects lines like <code style="color:var(--cyan);">CARD:FAD0D505</code>).
+      Works in <b style="color:var(--ink);">Chrome or Edge on desktop only</b>, and the page
+      must be served from <code style="color:var(--cyan);">http://localhost</code> or
+      <code style="color:var(--cyan);">https://</code> &mdash; not opened by double-clicking the file.
+    </p>
+    <div class="status-line"><span class="status-dot" id="connDotBig"></span><span id="connStatusText">Not connected</span></div>
+    <div class="row">
+      <button class="btn primary" id="connectBtn">Connect</button>
+      <button class="btn danger" id="disconnectBtn">Disconnect</button>
+    </div>
+    <div class="subpanel-title">Simulate an incoming tap</div>
+    <label class="field-label">Card ID scanned by the controller</label>
+    <input type="text" class="text-in" id="scanIdInput" placeholder="e.g. 04A3F1B2">
+    <div class="row"><button class="btn primary" id="scanTriggerBtn">Send tap</button></div>
+    <p style="font-size:11.5px;color:var(--ink-dim);margin-top:10px;">
+      Looks up the card ID against the ID learner list and lights the matching lamp &mdash;
+      the same path a real NFC tap would take.
+    </p>
+  </div>
+</div>
+
+<!-- manual control panel -->
+<div class="panel" id="manualPanel">
+  <div class="panel-header">
+    <h2>Manual Control</h2>
+    <button class="panel-close" data-close="manualPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Tap a lamp number to light it, tap again to turn it off.</p>
+    <div class="lamp-grid" id="lampGrid"></div>
+    <div class="row">
+      <button class="btn" id="manualAllOnBtn">All on</button>
+      <button class="btn danger" id="manualAllOffBtn">All off</button>
+    </div>
+  </div>
+</div>
+
+<!-- ID learner panel -->
+<div class="panel" id="learnPanel">
+  <div class="panel-header">
+    <h2>ID Learner</h2>
+    <button class="panel-close" data-close="learnPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <div class="learn-banner">
+      <span>&#9679;</span>
+      <span>Turn this on, then tap the lamp on stage you want to link. Each card ID can only be assigned to one lamp.</span>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="learnToggleBtn">Turn on ID learner</button>
+      <button class="btn danger" id="clearAllIdsBtn">Clear all IDs</button>
+    </div>
+    <div class="learn-select-hint" id="learnHint">ID learner is off &mdash; lamps behave normally when tapped.</div>
+    <div class="subpanel-title">Current assignments</div>
+    <table class="id-table">
+      <thead><tr><th>Card ID</th><th>Lamp</th><th></th></tr></thead>
+      <tbody id="idTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="status-bar">
+  <span class="count">Lamps lit: <span id="litCount">0</span>/<span id="totalCount">15</span></span>
+  <span class="sep"></span>
+  <span class="conn"><span class="status-dot" id="connDotBar"></span><span id="connLabelBar">Not connected</span></span>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ CONFIG ============ */
+  const NUM_LAMPS = 15;
+  const HUB = { x: 600, y: 470 };
+  const RX = 480, RY = 205;
+  const ANGLE_START = -70, ANGLE_END = 250; // degrees, leaves a gap at top for the tree
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  /* ============ SEEDED RANDOM (stable layout across reloads) ============ */
+  let seed = 42;
+  function rnd(){ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return (seed / 0x7fffffff); }
+  function deg2rad(d){ return d * Math.PI / 180; }
+
+  /* ============ STATE ============ */
+  const state = {
+    lit: new Array(NUM_LAMPS).fill(false),
+    litCount: 0,
+    connected: false,
+    connecting: false,
+    learnMode: false,
+    learnSelected: null,
+    idMap: {},          // cardId -> lampIndex
+    lampToId: {},        // lampIndex -> cardId
+    treeRevealed: false
+  };
+
+  /* ============ BUILD LAMP POSITIONS ============ */
+  const lamps = [];
+  for (let i = 0; i < NUM_LAMPS; i++){
+    const t = NUM_LAMPS === 1 ? 0 : i / (NUM_LAMPS - 1);
+    const angle = ANGLE_START + t * (ANGLE_END - ANGLE_START);
+    const rad = deg2rad(angle);
+    const depthFactor = (i % 2 === 0) ? 1.0 : 0.8; // alternate rows for depth
+    const x = HUB.x + Math.cos(rad) * RX * depthFactor;
+    const y = HUB.y + Math.sin(rad) * RY * depthFactor;
+    lamps.push({ index:i, x, y, scale: depthFactor === 1.0 ? 1.0 : 0.82 });
+  }
+
+  /* ============ TRACE PATH GENERATOR (circuit elbow lines) ============ */
+  function buildTracePath(lamp){
+    const hx = HUB.x, hy = HUB.y;
+    const lx = lamp.x, ly = lamp.y;
+    const midX = hx + (lx - hx) * 0.55;
+    const horizFirst = lamp.index % 2 === 0;
+    let d;
+    if (horizFirst){
+      d = `M ${hx} ${hy} L ${midX} ${hy} L ${midX} ${ly} L ${lx} ${ly}`;
+    } else {
+      d = `M ${hx} ${hy} L ${hx} ${(hy+ly)/2} L ${lx} ${(hy+ly)/2} L ${lx} ${ly}`;
+    }
+    return d;
+  }
+
+  /* ============ TREE GENERATOR (recursive branches) ============ */
+  const treeSegments = [];
+  const treeNodes = [];
+  function genTree(x, y, angle, len, depth){
+    const rad = deg2rad(angle);
+    const x2 = x + Math.cos(rad) * len;
+    const y2 = y + Math.sin(rad) * len;
+    treeSegments.push({ x1:x, y1:y, x2, y2, depth });
+    if (depth <= 0){
+      treeNodes.push({ x:x2, y:y2 });
+      return;
+    }
+    const branches = depth > 2 ? 2 : (rnd() > 0.5 ? 2 : 3);
+    for (let b = 0; b < branches; b++){
+      const spread = 22 + rnd() * 20;
+      const dAngle = (b - (branches-1)/2) * spread + (rnd()-0.5) * 8;
+      genTree(x2, y2, angle + dAngle, len * (0.68 + rnd()*0.08), depth - 1);
+    }
+  }
+  genTree(HUB.x, HUB.y, -90, 92, 4);
+
+  /* ============ RENDER: floor rings ============ */
+  const floorRingsG = document.getElementById("floorRings");
+  [1, 0.78, 0.56].forEach((s, i)=>{
+    const el = document.createElementNS(svgNS, "ellipse");
+    el.setAttribute("cx", HUB.x); el.setAttribute("cy", HUB.y + 6);
+    el.setAttribute("rx", RX * 1.06 * s); el.setAttribute("ry", RY * 1.05 * s);
+    el.setAttribute("class", "floor-ring");
+    el.setAttribute("opacity", 0.5 - i*0.12);
+    floorRingsG.appendChild(el);
+  });
+
+  /* ============ RENDER: traces ============ */
+  const tracesDimG = document.getElementById("tracesDim");
+  const tracesBrightG = document.getElementById("tracesBright");
+  const pulseDotsG = document.getElementById("pulseDots");
+  const traceEls = [];
+
+  lamps.forEach(lamp=>{
+    const d = buildTracePath(lamp);
+
+    const dim = document.createElementNS(svgNS, "path");
+    dim.setAttribute("d", d); dim.setAttribute("class", "trace-dim");
+    tracesDimG.appendChild(dim);
+
+    const bright = document.createElementNS(svgNS, "path");
+    bright.setAttribute("d", d); bright.setAttribute("class", "trace-bright");
+    tracesBrightG.appendChild(bright);
+    const len = bright.getTotalLength();
+    bright.style.strokeDasharray = len;
+    bright.style.strokeDashoffset = len;
+
+    const dot = document.createElementNS(svgNS, "circle");
+    dot.setAttribute("r", 4.2); dot.setAttribute("class", "pulse-dot");
+    pulseDotsG.appendChild(dot);
+
+    traceEls.push({ path: bright, len, dot });
+  });
+
+  /* ============ RENDER: tree ============ */
+  const treeWrap = document.getElementById("treeWrap");
+  const treeLineEls = [];
+  treeSegments.forEach(seg=>{
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", seg.x1); line.setAttribute("y1", seg.y1);
+    line.setAttribute("x2", seg.x2); line.setAttribute("y2", seg.y2);
+    line.setAttribute("class", "tree-line");
+    treeWrap.appendChild(line);
+    const len = Math.hypot(seg.x2-seg.x1, seg.y2-seg.y1);
+    line.style.strokeDasharray = len;
+    line.style.strokeDashoffset = len;
+    treeLineEls.push({ line, len, depth: seg.depth });
+  });
+  treeNodes.forEach(n=>{
+    const c = document.createElementNS(svgNS, "circle");
+    c.setAttribute("cx", n.x); c.setAttribute("cy", n.y); c.setAttribute("r", 4);
+    c.setAttribute("class", "tree-node");
+    treeWrap.appendChild(c);
+  });
+  // soft glow halo at hub used for the breathing pulse once revealed
+  const treeGlowPulse = document.createElementNS(svgNS, "circle");
+  treeGlowPulse.setAttribute("cx", HUB.x); treeGlowPulse.setAttribute("cy", HUB.y - 70);
+  treeGlowPulse.setAttribute("r", 60); treeGlowPulse.setAttribute("fill", "url(#bloomGradient)");
+  treeGlowPulse.setAttribute("class", "tree-glow-pulse");
+  treeWrap.appendChild(treeGlowPulse);
+
+  document.getElementById("hubCore").setAttribute("cx", HUB.x);
+  document.getElementById("hubCore").setAttribute("cy", HUB.y);
+
+  /* ============ RENDER: lamps ============ */
+  const lampsLayer = document.getElementById("lampsLayer");
+  const lampEls = [];
+  lamps.forEach(lamp=>{
+    const g = document.createElementNS(svgNS, "g");
+    g.setAttribute("class", "lamp-group");
+    g.setAttribute("data-index", lamp.index);
+    g.setAttribute("transform", `translate(${lamp.x} ${lamp.y})`);
+
+    const inner = document.createElementNS(svgNS, "g");
+    inner.setAttribute("class", "lamp-inner");
+    inner.setAttribute("transform", `scale(${lamp.scale})`);
+
+    const bloom = document.createElementNS(svgNS, "ellipse");
+    bloom.setAttribute("cx", 0); bloom.setAttribute("cy", 18); bloom.setAttribute("rx", 46); bloom.setAttribute("ry", 20);
+    bloom.setAttribute("class", "lamp-bloom");
+    inner.appendChild(bloom);
+
+    const pedestal = document.createElementNS(svgNS, "rect");
+    pedestal.setAttribute("x", -20); pedestal.setAttribute("y", 20); pedestal.setAttribute("width", 40); pedestal.setAttribute("height", 8);
+    pedestal.setAttribute("rx", 2); pedestal.setAttribute("class", "lamp-housing");
+    inner.appendChild(pedestal);
+
+    const housing = document.createElementNS(svgNS, "rect");
+    housing.setAttribute("x", -17); housing.setAttribute("y", -40); housing.setAttribute("width", 34); housing.setAttribute("height", 62);
+    housing.setAttribute("rx", 5); housing.setAttribute("class", "lamp-housing");
+    inner.appendChild(housing);
+
+    const glass = document.createElementNS(svgNS, "rect");
+    glass.setAttribute("x", -12); glass.setAttribute("y", -33); glass.setAttribute("width", 24); glass.setAttribute("height", 48);
+    glass.setAttribute("rx", 3); glass.setAttribute("class", "lamp-glass");
+    inner.appendChild(glass);
+
+    const core = document.createElementNS(svgNS, "rect");
+    core.setAttribute("x", -9); core.setAttribute("y", -30); core.setAttribute("width", 18); core.setAttribute("height", 42);
+    core.setAttribute("rx", 3); core.setAttribute("class", "lamp-core");
+    inner.appendChild(core);
+
+    const finial = document.createElementNS(svgNS, "circle");
+    finial.setAttribute("cx", 0); finial.setAttribute("cy", -42); finial.setAttribute("r", 3.4);
+    finial.setAttribute("class", "lamp-finial");
+    inner.appendChild(finial);
+
+    const idTag = document.createElementNS(svgNS, "text");
+    idTag.setAttribute("x", 0); idTag.setAttribute("y", 42); idTag.setAttribute("text-anchor", "middle");
+    idTag.setAttribute("class", "lamp-id-tag");
+    idTag.textContent = "";
+    inner.appendChild(idTag);
+
+    const numLabel = document.createElementNS(svgNS, "text");
+    numLabel.setAttribute("x", 0); numLabel.setAttribute("y", 54); numLabel.setAttribute("text-anchor", "middle");
+    numLabel.setAttribute("fill", "#4a5680"); numLabel.setAttribute("font-family", "JetBrains Mono, monospace");
+    numLabel.setAttribute("font-size", "10");
+    numLabel.textContent = String(lamp.index + 1).padStart(2, "0");
+    inner.appendChild(numLabel);
+
+    g.appendChild(inner);
+    lampsLayer.appendChild(g);
+
+    g.addEventListener("click", ()=> onLampClick(lamp.index));
+
+    lampEls.push({ g, inner, core, idTag });
+  });
+
+  /* ============ ambient twinkles ============ */
+  const twinkleWrap = document.getElementById("twinkles");
+  for (let i=0;i<26;i++){
+    const d = document.createElement("div");
+    d.className = "twinkle";
+    const size = 1 + Math.random()*2;
+    d.style.width = size+"px"; d.style.height = size+"px";
+    d.style.left = (Math.random()*100)+"%";
+    d.style.top = (Math.random()*70)+"%";
+    d.style.animation = `twinkleFade ${3+Math.random()*4}s ease-in-out ${Math.random()*5}s infinite`;
+    twinkleWrap.appendChild(d);
+  }
+
+  /* ============ CORE ANIMATION: trigger / extinguish a lamp ============ */
+  function triggerLamp(index, opts){
+    opts = opts || {};
+    if (state.lit[index]) return;
+    const t = traceEls[index];
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // draw the trace line
+    t.path.style.strokeDashoffset = 0;
+
+    if (!reduceMotion){
+      // animate a traveling pulse dot along the path
+      const duration = 700;
+      const start = performance.now();
+      t.dot.style.opacity = 1;
+      function step(now){
+        const p = Math.min(1, (now - start) / duration);
+        const pt = t.path.getPointAtLength(p * t.len);
+        t.dot.setAttribute("cx", pt.x);
+        t.dot.setAttribute("cy", pt.y);
+        if (p < 1){
+          requestAnimationFrame(step);
+        } else {
+          t.dot.style.opacity = 0;
+          igniteLamp(index);
+        }
+      }
+      requestAnimationFrame(step);
+    } else {
+      igniteLamp(index);
+    }
+  }
+
+  function igniteLamp(index){
+    state.lit[index] = true;
+    state.litCount++;
+    const el = lampEls[index];
+    el.g.classList.add("lit", "flash");
+    setTimeout(()=> el.g.classList.remove("flash"), 520);
+    updateStatusBar();
+    if (state.litCount === NUM_LAMPS && !state.treeRevealed){
+      setTimeout(revealTree, 350);
+    }
+  }
+
+  function extinguishLamp(index){
+    if (!state.lit[index]) return;
+    state.lit[index] = false;
+    state.litCount--;
+    const el = lampEls[index];
+    el.g.classList.remove("lit");
+    const t = traceEls[index];
+    t.path.style.transition = "none";
+    t.path.style.strokeDashoffset = t.len;
+    requestAnimationFrame(()=>{ t.path.style.transition = ""; });
+    if (state.treeRevealed){ hideTree(); }
+    updateStatusBar();
+  }
+
+  function revealTree(){
+    state.treeRevealed = true;
+    document.getElementById("treeWrap").classList.add("tree-visible");
+    document.getElementById("hubCore").classList.add("lit");
+    treeLineEls.forEach((t, i)=>{
+      setTimeout(()=>{
+        t.line.classList.add("reveal");
+        t.line.style.strokeDashoffset = 0;
+      }, (4 - t.depth) * 90 + i * 4);
+    });
+    setTimeout(()=>{
+      treeWrap.querySelectorAll(".tree-node").forEach(n=> n.classList.add("reveal"));
+    }, 650);
+    showToast("All lamps lit \u2014 the circuit tree glows", "ok");
+  }
+
+  function hideTree(){
+    state.treeRevealed = false;
+    document.getElementById("treeWrap").classList.remove("tree-visible");
+    document.getElementById("hubCore").classList.remove("lit");
+    treeLineEls.forEach(t=>{
+      t.line.classList.remove("reveal");
+      t.line.style.strokeDashoffset = t.len;
+    });
+    treeWrap.querySelectorAll(".tree-node").forEach(n=> n.classList.remove("reveal"));
+  }
+
+  function resetAll(){
+    for (let i=0;i<NUM_LAMPS;i++){
+      state.lit[i] = false;
+      lampEls[i].g.classList.remove("lit","flash");
+      const t = traceEls[i];
+      t.path.style.transition = "none";
+      t.path.style.strokeDashoffset = t.len;
+      requestAnimationFrame(()=>{ t.path.style.transition = ""; });
+    }
+    state.litCount = 0;
+    hideTree();
+    updateStatusBar();
+    showToast("All lamps reset", "ok");
+  }
+
+  function turnOnAll(){
+    let delay = 0;
+    for (let i=0;i<NUM_LAMPS;i++){
+      if (!state.lit[i]){
+        setTimeout(()=> triggerLamp(i), delay);
+        delay += 140;
+      }
+    }
+  }
+
+  function updateStatusBar(){
+    document.getElementById("litCount").textContent = state.litCount;
+    lampGridEls.forEach((btn, i)=>{
+      btn.classList.toggle("on", state.lit[i]);
+    });
+  }
+
+  /* ============ lamp click handling (stage + learn mode) ============ */
+  function onLampClick(index){
+    if (state.learnMode){
+      selectLampForLearning(index);
+      return;
+    }
+    if (state.lit[index]){
+      extinguishLamp(index);
+    } else {
+      triggerLamp(index);
+    }
+  }
+
+  /* ============ MENU / PANEL PLUMBING ============ */
+  const panels = ["mainPanel","connectPanel","manualPanel","learnPanel"];
+  function closeAllPanels(){ panels.forEach(id=> document.getElementById(id).classList.remove("open")); }
+  function openPanel(id){ closeAllPanels(); document.getElementById(id).classList.add("open"); }
+
+  document.getElementById("menuBtn").addEventListener("click", ()=>{
+    const p = document.getElementById("mainPanel");
+    p.classList.contains("open") ? closeAllPanels() : openPanel("mainPanel");
+  });
+  document.querySelectorAll("[data-close]").forEach(btn=>{
+    btn.addEventListener("click", ()=> document.getElementById(btn.dataset.close).classList.remove("open"));
+  });
+  document.querySelectorAll("[data-action]").forEach(item=>{
+    item.addEventListener("click", ()=>{
+      const action = item.dataset.action;
+      if (action === "open-connect") openPanel("connectPanel");
+      if (action === "open-manual") openPanel("manualPanel");
+      if (action === "open-learn") openPanel("learnPanel");
+      if (action === "turn-on-all"){ turnOnAll(); closeAllPanels(); }
+      if (action === "reset-all"){ resetAll(); closeAllPanels(); }
+    });
+  });
+
+  /* ============ MANUAL CONTROL PANEL ============ */
+  const lampGrid = document.getElementById("lampGrid");
+  const lampGridEls = [];
+  for (let i=0;i<NUM_LAMPS;i++){
+    const b = document.createElement("div");
+    b.className = "lamp-toggle";
+    b.innerHTML = `<span class="n">${String(i+1).padStart(2,"0")}</span>`;
+    b.addEventListener("click", ()=>{
+      state.lit[i] ? extinguishLamp(i) : triggerLamp(i);
+    });
+    lampGrid.appendChild(b);
+    lampGridEls.push(b);
+  }
+  document.getElementById("manualAllOnBtn").addEventListener("click", turnOnAll);
+  document.getElementById("manualAllOffBtn").addEventListener("click", resetAll);
+
+  /* ============ CONNECT CONTROLLER (simulated) ============ */
+  function setConnected(on){
+    state.connected = on;
+    document.getElementById("connDot").classList.toggle("connected", on);
+    document.getElementById("connDotSmall").classList.toggle("on", on);
+    document.getElementById("connDotBig").classList.toggle("on", on);
+    document.getElementById("connDotBar").classList.toggle("on", on);
+    const label = on ? "Controller connected" : "Controller not connected";
+    document.getElementById("connLabel").textContent = label;
+    document.getElementById("connStatusText").textContent = on ? "Connected" : "Not connected";
+    document.getElementById("connLabelBar").textContent = on ? "Connected" : "Not connected";
+  }
+
+  // Reads from the Arduino over USB serial (Web Serial API).
+  // Expects newline-terminated lines shaped like: CARD:FAD0D505
+  const BAUD_RATE = 9600;
+  const LINE_PREFIX = "CARD:";
+  let serialPort = null;
+  let serialReader = null;
+  let serialKeepReading = false;
+
+  async function connectToController(){
+    if (!("serial" in navigator)){
+      showToast("Web Serial isn't supported here \u2014 use Chrome or Edge on desktop", "err");
+      return;
+    }
+    if (location.protocol === "file:"){
+      showToast("Serve this page from localhost first \u2014 it can't read serial from a double-clicked file", "err");
+      return;
+    }
+    const dot = document.getElementById("connDotBig");
+    dot.classList.add("busy");
+    document.getElementById("connStatusText").textContent = "Select the Arduino's port\u2026";
+    try {
+      serialPort = await navigator.serial.requestPort();
+      await serialPort.open({ baudRate: BAUD_RATE });
+      setConnected(true);
+      showToast("Arduino connected", "ok");
+      readSerialLoop();
+    } catch (err){
+      showToast("Connection cancelled or failed: " + err.message, "err");
+      document.getElementById("connStatusText").textContent = "Not connected";
+    } finally {
+      dot.classList.remove("busy");
+    }
+  }
+
+  async function readSerialLoop(){
+    serialKeepReading = true;
+    const textDecoder = new TextDecoderStream();
+    serialPort.readable.pipeTo(textDecoder.writable).catch(()=>{});
+    serialReader = textDecoder.readable.getReader();
+    let buffer = "";
+    try {
+      while (serialKeepReading){
+        const { value, done } = await serialReader.read();
+        if (done) break;
+        buffer += value;
+        let idx;
+        while ((idx = buffer.indexOf("\n")) >= 0){
+          const line = buffer.slice(0, idx).trim();
+          buffer = buffer.slice(idx + 1);
+          if (line) handleSerialLine(line);
+        }
+      }
+    } catch (err){
+      if (serialKeepReading) showToast("Serial read error: " + err.message, "err");
+    } finally {
+      try { serialReader.releaseLock(); } catch(e){}
+    }
+  }
+
+  function handleSerialLine(line){
+    let cardId = line;
+    if (line.startsWith(LINE_PREFIX)){
+      cardId = line.slice(LINE_PREFIX.length).trim();
+    }
+    if (!cardId) return;
+    handleControllerTap(cardId);
+  }
+
+  async function disconnectController(){
+    serialKeepReading = false;
+    try { if (serialReader) await serialReader.cancel(); } catch(e){}
+    try { if (serialPort) await serialPort.close(); } catch(e){}
+    serialPort = null;
+    setConnected(false);
+    showToast("Controller disconnected");
+  }
+
+  document.getElementById("connectBtn").addEventListener("click", connectToController);
+  document.getElementById("disconnectBtn").addEventListener("click", disconnectController);
+
+  function handleControllerTap(cardId){
+    const idx = state.idMap[cardId];
+    if (idx === undefined){
+      showToast(`Unknown card: ${cardId}`, "err");
+      return;
+    }
+    triggerLamp(idx);
+    showToast(`Card ${cardId} \u2192 Lamp ${String(idx+1).padStart(2,"0")}`, "ok");
+  }
+  document.getElementById("scanTriggerBtn").addEventListener("click", ()=>{
+    const val = document.getElementById("scanIdInput").value.trim();
+    if (!val){ showToast("Enter a card ID first", "err"); return; }
+    handleControllerTap(val);
+  });
+
+  /* ============ ID LEARNER MODE ============ */
+  const learnToggleBtn = document.getElementById("learnToggleBtn");
+  const learnHint = document.getElementById("learnHint");
+  const assignInline = document.getElementById("assignInline");
+  const assignIdInput = document.getElementById("assignIdInput");
+
+  function setLearnMode(on){
+    state.learnMode = on;
+    learnToggleBtn.textContent = on ? "Turn off ID learner" : "Turn on ID learner";
+    learnToggleBtn.classList.toggle("primary", !on);
+    learnHint.textContent = on
+      ? "ID learner is on \u2014 tap a lamp on stage to link it to a card."
+      : "ID learner is off \u2014 lamps behave normally when tapped.";
+    if (!on){
+      cancelLearnSelection();
+    }
+  }
+  learnToggleBtn.addEventListener("click", ()=> setLearnMode(!state.learnMode));
+
+  function selectLampForLearning(index){
+    if (state.learnSelected !== null){
+      lampEls[state.learnSelected].g.classList.remove("learn-target");
+    }
+    state.learnSelected = index;
+    lampEls[index].g.classList.add("learn-target");
+    document.getElementById("assignLampLabel").textContent = `Lamp ${String(index+1).padStart(2,"0")}`;
+    assignIdInput.value = state.lampToId[index] || "";
+    positionAssignInline(index);
+    assignInline.classList.add("show");
+    assignIdInput.focus();
+  }
+
+  function positionAssignInline(index){
+    const lamp = lamps[index];
+    const svgEl = document.getElementById("scene");
+    const rect = svgEl.getBoundingClientRect();
+    const vb = svgEl.viewBox.baseVal;
+    const scaleX = rect.width / vb.width, scaleY = rect.height / vb.height;
+    const screenX = rect.left + lamp.x * scaleX;
+    const screenY = rect.top + lamp.y * scaleY;
+    let left = screenX + 30, top = screenY - 40;
+    left = Math.min(left, window.innerWidth - 230);
+    top = Math.max(10, Math.min(top, window.innerHeight - 160));
+    assignInline.style.left = left + "px";
+    assignInline.style.top = top + "px";
+  }
+
+  function cancelLearnSelection(){
+    if (state.learnSelected !== null){
+      lampEls[state.learnSelected].g.classList.remove("learn-target");
+    }
+    state.learnSelected = null;
+    assignInline.classList.remove("show");
+  }
+
+  document.getElementById("assignCancelBtn").addEventListener("click", cancelLearnSelection);
+
+  document.getElementById("assignConfirmBtn").addEventListener("click", ()=>{
+    const idx = state.learnSelected;
+    if (idx === null) return;
+    const val = assignIdInput.value.trim();
+    if (!val){ showToast("Enter a card ID", "err"); return; }
+
+    const existingOwner = state.idMap[val];
+    if (existingOwner !== undefined && existingOwner !== idx){
+      showToast(`ID already assigned to Lamp ${String(existingOwner+1).padStart(2,"0")}`, "err");
+      return;
+    }
+    // clear this lamp's previous id if it had one
+    const prevId = state.lampToId[idx];
+    if (prevId) delete state.idMap[prevId];
+
+    state.idMap[val] = idx;
+    state.lampToId[idx] = val;
+    lampEls[idx].g.classList.add("has-id");
+    lampEls[idx].idTag.textContent = val;
+
+    renderIdTable();
+    showToast(`Card ${val} linked to Lamp ${String(idx+1).padStart(2,"0")}`, "ok");
+    cancelLearnSelection();
+  });
+
+  document.getElementById("clearAllIdsBtn").addEventListener("click", ()=>{
+    state.idMap = {};
+    state.lampToId = {};
+    lampEls.forEach(el=>{ el.g.classList.remove("has-id"); el.idTag.textContent = ""; });
+    renderIdTable();
+    showToast("All ID links cleared");
+  });
+
+  function renderIdTable(){
+    const body = document.getElementById("idTableBody");
+    body.innerHTML = "";
+    for (let i=0;i<NUM_LAMPS;i++){
+      const tr = document.createElement("tr");
+      const id = state.lampToId[i];
+      tr.className = id ? "assigned" : "unassigned";
+      tr.innerHTML = `<td>${id || "\u2014 unassigned \u2014"}</td><td>Lamp ${String(i+1).padStart(2,"0")}</td><td>${id ? '<span class="clear-id" data-idx="'+i+'">clear</span>' : ""}</td>`;
+      body.appendChild(tr);
+    }
+    body.querySelectorAll(".clear-id").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        const i = Number(el.dataset.idx);
+        const id = state.lampToId[i];
+        if (id) delete state.idMap[id];
+        delete state.lampToId[i];
+        lampEls[i].g.classList.remove("has-id");
+        lampEls[i].idTag.textContent = "";
+        renderIdTable();
+      });
+    });
+  }
+  renderIdTable();
+
+  /* ============ TOAST ============ */
+  let toastTimer = null;
+  function showToast(msg, kind){
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.className = "toast show" + (kind ? " " + kind : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(()=> t.classList.remove("show"), 2600);
+  }
+
+  /* close panels when clicking the empty stage */
+  document.querySelector(".stage-root").addEventListener("click", (e)=>{
+    if (e.target.closest(".panel") || e.target.closest(".menu-btn") || e.target.closest(".lamp-group") || e.target.closest(".assign-inline")) return;
+  });
+
+  updateStatusBar();
+})();
+</script>
+</body>
+</html>

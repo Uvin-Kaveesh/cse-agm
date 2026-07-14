@@ -1,0 +1,2206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lamp Lighting Ceremony &mdash; Virtual Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+  :root{
+    --bg:#05060d;
+    --cyan:#57e3ff;
+    --violet:#a06bff;
+    --white-hot:#eef7ff;
+    --ink:#e6ecf7;
+    --ink-dim:#7c8aab;
+    --panel-bg:rgba(9,12,22,0.92);
+    --panel-border:rgba(120,150,220,0.18);
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{ margin:0; padding:0; width:100%; height:100%; background:var(--bg); color:var(--ink); font-family:'Inter', sans-serif; overflow:hidden; }
+  @media (prefers-reduced-motion: reduce){ *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; } }
+
+  .stage-root{ position:fixed; inset:0; background:#05060d; }
+  #three-canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  #loadingOverlay{
+    position:fixed; inset:0; z-index:100; background:#05060d; color:var(--ink-dim);
+    display:flex; align-items:center; justify-content:center; flex-direction:column; gap:14px;
+    font-family:'Rajdhani',sans-serif; font-size:15px; letter-spacing:.05em; transition:opacity .5s ease;
+  }
+  #loadingOverlay .spin{
+    width:34px; height:34px; border-radius:50%; border:2px solid rgba(87,227,255,0.2); border-top-color:var(--cyan);
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  #loadingOverlay.hidden{ opacity:0; pointer-events:none; }
+
+  #webglError{
+    position:fixed; inset:0; z-index:110; background:#05060d; color:var(--ink);
+    display:none; align-items:center; justify-content:center; text-align:center; padding:40px;
+    font-family:'Inter',sans-serif; font-size:14px; line-height:1.7;
+  }
+  #webglError b{ color:var(--cyan); }
+
+  /* ---------- top-right menu ---------- */
+  .menu-btn{
+    position:fixed; top:20px; right:20px; z-index:50;
+    width:48px; height:48px; border-radius:50%;
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer; backdrop-filter:blur(6px);
+    box-shadow:0 0 0 rgba(87,227,255,0);
+    transition:box-shadow .3s ease, border-color .3s ease;
+  }
+  .menu-btn:hover{ border-color:rgba(87,227,255,0.5); box-shadow:0 0 18px rgba(87,227,255,0.25); }
+  .menu-btn svg{ width:20px; height:20px; }
+  .menu-btn .dot{ position:absolute; top:6px; right:6px; width:9px; height:9px; border-radius:50%; background:#4a5680; box-shadow:0 0 6px rgba(0,0,0,0.5); }
+  .menu-btn .dot.connected{ background:#4be08a; box-shadow:0 0 8px #4be08a; }
+
+  .panel{
+    position:fixed; top:20px; right:20px; z-index:60;
+    width:340px; max-height:calc(100vh - 40px);
+    background:var(--panel-bg); border:1px solid var(--panel-border);
+    border-radius:var(--radius); backdrop-filter:blur(10px);
+    box-shadow:0 20px 60px rgba(0,0,0,0.6);
+    transform:translateX(calc(100% + 40px)); opacity:0;
+    transition:transform .35s cubic-bezier(.2,.8,.25,1), opacity .3s ease;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  .panel.open{ transform:translateX(0); opacity:1; }
+  .panel-header{ display:flex; align-items:center; justify-content:space-between; padding:16px 18px; border-bottom:1px solid var(--panel-border); }
+  .panel-header h2{ font-family:'Rajdhani',sans-serif; font-weight:700; font-size:17px; letter-spacing:0.03em; margin:0; }
+  .panel-close{ cursor:pointer; color:var(--ink-dim); background:none; border:none; font-size:18px; padding:4px; line-height:1; }
+  .panel-close:hover{ color:var(--ink); }
+  .panel-body{ padding:14px 18px 20px; overflow-y:auto; }
+
+  .menu-list{ list-style:none; margin:0; padding:8px; }
+  .menu-item{ display:flex; align-items:center; gap:12px; padding:12px 12px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:500; color:var(--ink); transition:background .2s ease; }
+  .menu-item:hover{ background:rgba(87,227,255,0.08); }
+  .menu-item .ic{ width:20px; height:20px; flex-shrink:0; color:var(--cyan); }
+  .menu-item small{ display:block; color:var(--ink-dim); font-weight:400; font-size:11.5px; margin-top:2px; }
+
+  .subpanel-title{ font-family:'Rajdhani',sans-serif; font-weight:600; font-size:13px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:0.08em; margin:14px 4px 8px; }
+
+  .lamp-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .lamp-toggle{ position:relative; padding:10px 6px; border-radius:9px; text-align:center; background:#0d0f1a; border:1px solid rgba(120,150,220,0.16); cursor:pointer; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-dim); transition:all .2s ease; }
+  .lamp-toggle .n{ font-weight:600; color:var(--ink); }
+  .lamp-toggle.on{ border-color:rgba(87,227,255,0.55); background:rgba(87,227,255,0.08); color:var(--cyan); box-shadow:0 0 12px rgba(87,227,255,0.18) inset; }
+  .lamp-toggle.on .n{ color:var(--cyan); }
+  .lamp-toggle:active{ transform:scale(0.95); }
+
+  .row{ display:flex; gap:8px; margin-top:10px; }
+  .btn{ flex:1; padding:10px 12px; border-radius:9px; border:1px solid var(--panel-border); background:#0d0f1a; color:var(--ink); font-size:13px; font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; transition:all .2s ease; }
+  .btn:hover{ border-color:rgba(87,227,255,0.5); color:var(--cyan); }
+  .btn.primary{ background:linear-gradient(135deg, rgba(87,227,255,0.16), rgba(160,107,255,0.16)); border-color:rgba(87,227,255,0.4); }
+  .btn.danger:hover{ border-color:#ff6b7c; color:#ff6b7c; }
+
+  .status-line{ display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--ink-dim); margin-top:12px; }
+  .status-dot{ width:8px; height:8px; border-radius:50%; background:#4a5680; }
+  .status-dot.on{ background:#4be08a; box-shadow:0 0 6px #4be08a; }
+  .status-dot.busy{ background:#f2b94c; box-shadow:0 0 6px #f2b94c; animation:blink 1s infinite; }
+  @keyframes blink{ 50%{ opacity:0.3; } }
+
+  input.text-in{ width:100%; padding:9px 10px; border-radius:8px; border:1px solid var(--panel-border); background:#0a0c16; color:var(--ink); font-family:'JetBrains Mono',monospace; font-size:13px; outline:none; }
+  input.text-in:focus{ border-color:rgba(87,227,255,0.55); }
+  label.field-label{ display:block; font-size:11.5px; color:var(--ink-dim); margin:10px 0 5px; }
+
+  .id-table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:12px; }
+  .id-table th{ text-align:left; color:var(--ink-dim); font-weight:500; padding:5px 4px; border-bottom:1px solid var(--panel-border); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
+  .id-table td{ padding:6px 4px; border-bottom:1px solid rgba(120,150,220,0.08); font-family:'JetBrains Mono',monospace; }
+  .id-table .clear-id{ color:var(--ink-dim); cursor:pointer; font-family:'Inter',sans-serif; }
+  .id-table .clear-id:hover{ color:#ff6b7c; }
+  .id-table tr.assigned td:first-child{ color:var(--cyan); }
+  .id-table tr.unassigned td{ color:#4a5680; }
+
+  .learn-banner{ background:rgba(160,107,255,0.1); border:1px solid rgba(160,107,255,0.35); border-radius:9px; padding:10px 12px; font-size:12.5px; color:#cdb9ff; margin-bottom:10px; display:flex; gap:8px; align-items:flex-start; }
+  .learn-select-hint{ font-size:12px; color:var(--ink-dim); margin-top:8px; }
+
+  .toast{ position:fixed; left:50%; bottom:78px; transform:translateX(-50%) translateY(20px); background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:10px; padding:11px 18px; font-size:13px; color:var(--ink); z-index:80; opacity:0; transition:all .3s ease; pointer-events:none; white-space:nowrap; }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+  .toast.err{ border-color:rgba(255,107,124,0.5); color:#ff9aa6; }
+  .toast.ok{ border-color:rgba(75,224,138,0.5); color:#8ef0b0; }
+
+  .status-bar{ position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:40; display:flex; align-items:center; gap:16px; background:var(--panel-bg); border:1px solid var(--panel-border); border-radius:999px; padding:9px 20px; backdrop-filter:blur(8px); font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--ink-dim); }
+  .status-bar .count{ color:var(--ink); font-weight:600; }
+  .status-bar .count .lit-num{ color:var(--cyan); }
+  .status-bar .sep{ width:1px; height:14px; background:var(--panel-border); }
+  .status-bar .conn{ display:flex; align-items:center; gap:6px; }
+  .status-bar .rot{ display:flex; align-items:center; gap:6px; }
+
+  .quick-toggle-dot{
+    position:fixed; bottom:24px; right:24px; z-index:45;
+    width:14px; height:14px; border-radius:50%;
+    background:#2a3252; border:1px solid rgba(120,150,220,0.45);
+    cursor:pointer; box-shadow:0 0 0 rgba(87,227,255,0);
+    transition:all .25s ease;
+  }
+  .quick-toggle-dot:hover{ transform:scale(1.4); box-shadow:0 0 10px rgba(87,227,255,0.45); }
+  .quick-toggle-dot.all-on{ background:var(--cyan); border-color:var(--cyan); box-shadow:0 0 10px rgba(87,227,255,0.75); }
+
+  .assign-inline{ position:fixed; z-index:70; background:var(--panel-bg); border:1px solid rgba(160,107,255,0.4); border-radius:10px; padding:12px; width:210px; box-shadow:0 12px 40px rgba(0,0,0,0.6); display:none; flex-direction:column; gap:8px; }
+  .assign-inline.show{ display:flex; }
+  .assign-inline .t{ font-size:12px; color:var(--ink-dim); }
+  .assign-inline .t b{ color:var(--cyan); }
+
+  .welcome-card{
+    position:fixed; top:50%; right:-420px; transform:translateY(-50%);
+    width:340px; z-index:55; text-align:center;
+    background:linear-gradient(180deg, rgba(12,16,28,0.94), rgba(9,12,22,0.94));
+    border:1px solid rgba(87,227,255,0.35); border-radius:18px;
+    padding:32px 28px 30px; box-shadow:0 20px 60px rgba(0,0,0,0.55), 0 0 40px rgba(87,227,255,0.12);
+    opacity:0; transition:right 0.9s cubic-bezier(.2,.8,.25,1), opacity 0.9s ease;
+    pointer-events:none;
+  }
+  .welcome-card.show{ right:36px; opacity:1; }
+  .welcome-card-eyebrow{
+    font-family:'Rajdhani',sans-serif; font-weight:700; letter-spacing:0.25em; text-transform:uppercase;
+    font-size:13px; color:var(--cyan); margin-bottom:18px;
+  }
+  .welcome-card-photo{
+    width:132px; height:132px; border-radius:50%; object-fit:cover; margin:0 auto 20px;
+    display:block; border:2px solid rgba(87,227,255,0.55);
+    box-shadow:0 0 28px rgba(87,227,255,0.35);
+  }
+  .welcome-card-name{
+    font-family:'Rajdhani',sans-serif; font-weight:700; font-size:25px; color:var(--ink); line-height:1.3;
+  }
+  .welcome-card-profession{
+    font-size:15px; color:var(--ink-dim); margin-top:8px;
+  }
+
+  ::-webkit-scrollbar{ width:6px; }
+  ::-webkit-scrollbar-thumb{ background:#2a3252; border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="stage-root">
+  <canvas id="three-canvas"></canvas>
+</div>
+
+<div id="loadingOverlay">
+  <div class="spin"></div>
+  <div>Loading 3D stage&hellip;</div>
+</div>
+
+<div id="webglError">
+  <div>
+    <p>This browser can't render the 3D stage.<br>
+    Please open this page in the latest <b>Chrome</b> or <b>Edge</b> on a desktop computer with hardware acceleration enabled.</p>
+  </div>
+</div>
+
+<div id="assignInline" class="assign-inline">
+  <div class="t">Assign card ID to <b id="assignLampLabel">Lamp 01</b></div>
+  <input type="text" id="assignIdInput" class="text-in" placeholder="Scan or type card ID">
+  <div class="row" style="margin-top:2px;">
+    <button class="btn primary" id="assignConfirmBtn">Assign</button>
+    <button class="btn" id="assignCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<div id="welcomeCard" class="welcome-card">
+  <div class="welcome-card-eyebrow">Welcome</div>
+  <img id="welcomeCardPhoto" class="welcome-card-photo" src="" alt="">
+  <div class="welcome-card-name" id="welcomeCardName">Guest Name</div>
+  <div class="welcome-card-profession" id="welcomeCardProfession">Profession</div>
+</div>
+
+<audio id="welcomeAudioPlayer" style="display:none;"></audio>
+<audio id="bgMusicPlayer" style="display:none;"></audio>
+
+<!-- menu button -->
+<button class="menu-btn" id="menuBtn" aria-label="Open controls menu">
+  <span class="dot" id="connDot"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="#cfe3ff" stroke-width="2" stroke-linecap="round">
+    <line x1="4" y1="7" x2="20" y2="7"></line>
+    <line x1="4" y1="12" x2="20" y2="12"></line>
+    <line x1="4" y1="17" x2="20" y2="17"></line>
+  </svg>
+</button>
+
+<!-- main menu panel -->
+<div class="panel" id="mainPanel">
+  <div class="panel-header">
+    <h2>Ceremony Controls</h2>
+    <button class="panel-close" data-close="mainPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <ul class="menu-list">
+      <li class="menu-item" data-action="open-connect">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12a8 8 0 0116 0M7.5 12a4.5 4.5 0 019 0M12 12v6"/><circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none"/></svg>
+        <div>Connect controller<small>Link the physical NFC / trigger controller</small></div>
+      </li>
+      <li class="menu-item" data-action="open-manual">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h.01M15 9h.01M9 15h.01M15 15h.01"/></svg>
+        <div>Manual control<small>Light or turn off each lamp by hand</small></div>
+      </li>
+      <li class="menu-item" data-action="turn-on-all">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3.4"/></svg>
+        <div>Turn on all lamps<small>Light every lamp in sequence</small></div>
+      </li>
+      <li class="menu-item" data-action="reset-all">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <div>Reset (turn off all)<small>Clear the display back to dark</small></div>
+      </li>
+      <li class="menu-item" data-action="open-learn">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <div>ID learner<small>Assign an NFC card ID to one lamp</small></div>
+      </li>
+      <li class="menu-item" data-action="open-guests">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 20c1.2-4 4-6 7.5-6s6.3 2 7.5 6"/></svg>
+        <div>Guest details<small>Add name, profession, photo per lamp</small></div>
+      </li>
+      <li class="menu-item" data-action="open-height">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M7 8l5-5 5 5M7 16l5 5 5-5"/></svg>
+        <div>Camera height<small>Move the view up or down, same angle</small></div>
+      </li>
+      <li class="menu-item" data-action="open-music">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        <div>Background music<small>Upload and play music for the event</small></div>
+      </li>
+      <li class="menu-item" data-action="toggle-rotation" id="rotateMenuItem">
+        <svg class="ic" viewBox="0 0 24 24" fill="currentColor" stroke="none" id="rotateIcon">
+          <rect x="6" y="5" width="4" height="14" rx="1"></rect>
+          <rect x="14" y="5" width="4" height="14" rx="1"></rect>
+        </svg>
+        <div id="rotateMenuLabel">Pause rotation<small>Stop the camera turning</small></div>
+      </li>
+    </ul>
+    <div class="status-line"><span class="status-dot" id="connDotSmall"></span><span id="connLabel">Controller not connected</span></div>
+  </div>
+</div>
+
+<!-- connect controller panel -->
+<div class="panel" id="connectPanel">
+  <div class="panel-header">
+    <h2>Connect Controller</h2>
+    <button class="panel-close" data-close="connectPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12.5px;color:var(--ink-dim);line-height:1.6;margin-top:0;">
+      Talks to your Arduino directly over USB using the Web Serial API (9600 baud,
+      expects lines like <code style="color:var(--cyan);">CARD:FAD0D505</code>).
+      Works in <b style="color:var(--ink);">Chrome or Edge on desktop only</b>, and the page
+      must be served from <code style="color:var(--cyan);">http://localhost</code> or
+      <code style="color:var(--cyan);">https://</code> &mdash; not opened by double-clicking the file.
+    </p>
+    <div class="status-line"><span class="status-dot" id="connDotBig"></span><span id="connStatusText">Not connected</span></div>
+    <div class="row">
+      <button class="btn primary" id="connectBtn">Connect</button>
+      <button class="btn danger" id="disconnectBtn">Disconnect</button>
+    </div>
+    <div class="subpanel-title">Simulate an incoming tap</div>
+    <label class="field-label">Card ID scanned by the controller</label>
+    <input type="text" class="text-in" id="scanIdInput" placeholder="e.g. 04A3F1B2">
+    <div class="row"><button class="btn primary" id="scanTriggerBtn">Send tap</button></div>
+    <p style="font-size:11.5px;color:var(--ink-dim);margin-top:10px;">
+      Looks up the card ID against the ID learner list and lights the matching lamp &mdash;
+      the same path a real NFC tap would take.
+    </p>
+    <div class="subpanel-title">Raw serial monitor</div>
+    <p style="font-size:11.5px;color:var(--ink-dim);margin-top:0;">Shows exactly what's arriving from the Arduino, unfiltered. Tap a card and watch here &mdash; if nothing appears, the problem is between the Arduino and the browser, not in this app.</p>
+    <div class="row"><button class="btn" id="serialTestLogBtn">Add test line</button></div>
+    <div id="serialRawLog" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--cyan);background:#0a0c16;border:1px solid var(--panel-border);border-radius:8px;padding:8px;height:110px;overflow-y:auto;white-space:pre-wrap;margin-top:8px;">Waiting for connection&hellip;</div>
+  </div>
+</div>
+
+<!-- manual control panel -->
+<div class="panel" id="manualPanel">
+  <div class="panel-header">
+    <h2>Manual Control</h2>
+    <button class="panel-close" data-close="manualPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Tap a lamp number to light it, tap again to turn it off.</p>
+    <div class="lamp-grid" id="lampGrid"></div>
+    <div class="row">
+      <button class="btn" id="manualAllOnBtn">All on</button>
+      <button class="btn danger" id="manualAllOffBtn">All off</button>
+    </div>
+  </div>
+</div>
+
+<!-- ID learner panel -->
+<div class="panel" id="learnPanel">
+  <div class="panel-header">
+    <h2>ID Learner</h2>
+    <button class="panel-close" data-close="learnPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <div class="learn-banner">
+      <span>&#9679;</span>
+      <span>Turn this on, tap the lamp on stage you want to link, then tap the physical card &mdash; its ID is captured and assigned automatically. Each card can only be linked to one lamp. The camera holds still while a lamp is selected.</span>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="learnToggleBtn">Turn on ID learner</button>
+      <button class="btn danger" id="clearAllIdsBtn">Clear all IDs</button>
+    </div>
+    <div class="learn-select-hint" id="learnHint">ID learner is off &mdash; lamps behave normally when tapped.</div>
+    <div class="subpanel-title">Current assignments</div>
+    <table class="id-table">
+      <thead><tr><th>Card ID</th><th>Lamp</th><th></th></tr></thead>
+      <tbody id="idTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- guest details panel -->
+<div class="panel" id="guestPanel">
+  <div class="panel-header">
+    <h2>Guest Details</h2>
+    <button class="panel-close" data-close="guestPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Pick a lamp, then add the guest linked to that candle. Their photo, name and profession appear as a warm welcome when their candle is lit.</p>
+    <div class="lamp-grid" id="guestLampGrid"></div>
+
+    <div class="subpanel-title" style="margin-top:16px;">Editing <span id="guestEditingLabel">Lamp 01</span></div>
+    <label class="field-label">Photo</label>
+    <div class="row" style="align-items:center;">
+      <img id="guestPhotoPreview" src="" alt="" style="width:52px;height:52px;border-radius:8px;object-fit:cover;background:#0a0c16;border:1px solid var(--panel-border);display:none;">
+      <button class="btn" id="guestPhotoBtn">Upload photo</button>
+      <input type="file" id="guestPhotoInput" accept="image/*" style="display:none;">
+    </div>
+    <label class="field-label">Name</label>
+    <input type="text" class="text-in" id="guestNameInput" placeholder="e.g. Dr. Amara Perera">
+    <label class="field-label">Profession</label>
+    <input type="text" class="text-in" id="guestProfessionInput" placeholder="e.g. Cardiologist">
+
+    <label class="field-label">Welcome audio (optional)</label>
+    <div class="row" style="align-items:center;">
+      <button class="btn" id="guestAudioBtn">Upload audio</button>
+      <button class="btn danger" id="guestAudioRemoveBtn">Remove audio</button>
+      <input type="file" id="guestAudioInput" accept="audio/*" style="display:none;">
+    </div>
+    <div id="guestAudioStatus" style="font-size:11.5px;color:var(--ink-dim);margin-top:6px;">No audio uploaded</div>
+    <audio id="guestAudioPreview" controls style="width:100%;margin-top:8px;display:none;"></audio>
+
+    <div class="row">
+      <button class="btn primary" id="guestSaveBtn">Save guest</button>
+      <button class="btn danger" id="guestRemoveBtn">Remove</button>
+    </div>
+    <div class="row"><button class="btn" id="guestPreviewBtn">Preview welcome card</button></div>
+  </div>
+</div>
+
+<div class="panel" id="heightPanel">
+  <div class="panel-header">
+    <h2>Camera Height</h2>
+    <button class="panel-close" data-close="heightPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Slide or use the arrows to move the view up or down &mdash; the viewing angle and rotation stay the same.</p>
+    <div class="row" style="align-items:center;">
+      <button class="btn" id="heightDownBtn">&#9660; Down</button>
+      <button class="btn" id="heightUpBtn">&#9650; Up</button>
+    </div>
+    <label class="field-label" style="margin-top:16px;">Height</label>
+    <input type="range" id="heightSlider" min="-2.4" max="3.2" step="0.05" value="-2.4" style="width:100%;">
+    <div class="row">
+      <button class="btn" id="heightResetBtn">Reset to center</button>
+    </div>
+
+    <div class="subpanel-title">Look tilt</div>
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Tilts the view up or down without moving the camera's position.</p>
+    <div class="row" style="align-items:center;">
+      <button class="btn" id="tiltDownBtn">&#9660; Tilt down</button>
+      <button class="btn" id="tiltUpBtn">&#9650; Tilt up</button>
+    </div>
+    <label class="field-label" style="margin-top:16px;">Tilt</label>
+    <input type="range" id="tiltSlider" min="-25" max="25" step="1" value="0" style="width:100%;">
+    <div class="row">
+      <button class="btn" id="tiltResetBtn">Reset tilt</button>
+    </div>
+
+    <div class="subpanel-title">Welcome card speed</div>
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Controls only how fast the camera zooms to a candle and back when showing a guest's welcome card.</p>
+    <input type="range" id="welcomeSpeedSlider" min="0.5" max="2" step="0.1" value="1" style="width:100%;">
+    <div class="row" style="justify-content:space-between;font-size:11px;color:var(--ink-dim);padding:0 2px;">
+      <span>Slower</span><span>Faster</span>
+    </div>
+    <div class="row">
+      <button class="btn" id="welcomeSpeedResetBtn">Reset speed</button>
+    </div>
+  </div>
+</div>
+
+<!-- background music panel -->
+<div class="panel" id="musicPanel">
+  <div class="panel-header">
+    <h2>Background Music</h2>
+    <button class="panel-close" data-close="musicPanel">&times;</button>
+  </div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--ink-dim);margin-top:0;">Upload a music track to play through the ceremony. It ducks down automatically while a guest's welcome audio plays, then comes back up.</p>
+    <div class="row">
+      <button class="btn" id="musicUploadBtn">Upload music</button>
+      <button class="btn danger" id="musicRemoveBtn">Remove</button>
+    </div>
+    <input type="file" id="musicFileInput" accept="audio/*" style="display:none;">
+    <div id="musicStatus" style="font-size:11.5px;color:var(--ink-dim);margin-top:8px;">No music uploaded</div>
+
+    <div class="row" style="margin-top:14px;">
+      <button class="btn primary" id="musicPlayBtn">Play</button>
+      <button class="btn" id="musicPauseBtn">Pause</button>
+    </div>
+    <label class="field-label" style="margin-top:16px;">Volume</label>
+    <input type="range" id="musicVolumeSlider" min="0" max="100" step="1" value="50" style="width:100%;">
+    <div class="row" style="align-items:center;margin-top:12px;">
+      <label style="font-size:13px;color:var(--ink);display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="musicLoopCheckbox" checked style="width:16px;height:16px;">
+        Loop continuously
+      </label>
+    </div>
+  </div>
+</div>
+
+
+<div class="status-bar">
+  <span class="count">Lamps lit: <span id="litCount">0</span>/<span id="totalCount">15</span></span>
+  <span class="sep"></span>
+  <span class="conn"><span class="status-dot" id="connDotBar"></span><span id="connLabelBar">Not connected</span></span>
+  <span class="sep"></span>
+  <span class="rot"><span id="rotLabel">Rotating</span></span>
+</div>
+
+<div id="quickToggleDot" class="quick-toggle-dot" title="Toggle all lights (Ctrl+L)"></div>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+(function(){
+"use strict";
+
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const NUM_LAMPS = 15;
+const FLOOR_Y = 0;               // podium top surface height
+const RING_OUTER = 6.3;
+const RING_INNER = 4.9;
+const LAMP_H = 1.9;              // approx lamp height for camera framing / labels
+
+/* seeded random so the tree / floor texture look the same every load */
+let seed = 42;
+function rnd(){ seed = (seed * 1103515245 + 12345) & 0x7fffffff; return (seed / 0x7fffffff); }
+
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  lit: new Array(NUM_LAMPS).fill(false),
+  litCount: 0,
+  connected: false,
+  learnMode: false,
+  learnSelected: null,
+  idMap: {},
+  lampToId: {},
+  treeRevealed: false
+};
+
+let webglOK = true;
+try{
+  const testCanvas = document.createElement("canvas");
+  webglOK = !!(testCanvas.getContext("webgl2") || testCanvas.getContext("webgl"));
+}catch(e){ webglOK = false; }
+if (!webglOK){
+  document.getElementById("webglError").style.display = "flex";
+  document.getElementById("loadingOverlay").classList.add("hidden");
+}
+
+/* ============================================================
+   THREE.JS SETUP
+   ============================================================ */
+const canvas = document.getElementById("three-canvas");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, powerPreference:"high-performance" });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x020308, 0.012);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 200);
+const cameraTarget = new THREE.Vector3(0, 2.4, 0);
+const BASE_TARGET_Y = cameraTarget.y;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.68, 0.42, 0.24);
+composer.addPass(bloomPass);
+
+window.addEventListener("resize", ()=>{
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h);
+  composer.setSize(w, h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+});
+
+/* lighting */
+scene.add(new THREE.AmbientLight(0x33406e, 0.75));
+scene.add(new THREE.HemisphereLight(0x9fd4ff, 0x0a0e1a, 0.6));
+const keyLight = new THREE.PointLight(0x8fd6ff, 1.8, 40, 2);
+keyLight.position.set(6, 10, 8);
+scene.add(keyLight);
+const rimLight = new THREE.PointLight(0xa06bff, 1.4, 40, 2);
+rimLight.position.set(-8, 6, -8);
+scene.add(rimLight);
+const fillLight = new THREE.PointLight(0xbfe6ff, 0.9, 30, 2);
+fillLight.position.set(0, 4, 14);
+scene.add(fillLight);
+
+/* ============================================================
+   BACKGROUND: starfield + sweeping beams
+   ============================================================ */
+(function buildStarfield(){
+  const count = 500;
+  const positions = new Float32Array(count*3);
+  const phases = new Float32Array(count);
+  for (let i=0;i<count;i++){
+    const r = 40 + rnd()*60;
+    const theta = rnd()*Math.PI*2;
+    const y = rnd()*40 - 6;
+    positions[i*3] = Math.cos(theta)*r;
+    positions[i*3+1] = y;
+    positions[i*3+2] = Math.sin(theta)*r;
+    phases[i] = rnd()*Math.PI*2;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(positions,3));
+  geo.setAttribute("phase", new THREE.BufferAttribute(phases,1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms:{ uTime:{value:0} },
+    vertexShader:`
+      attribute float phase;
+      varying float vOpacity;
+      uniform float uTime;
+      void main(){
+        vOpacity = 0.25 + 0.65 * (0.5 + 0.5*sin(uTime*0.6 + phase));
+        vec4 mv = modelViewMatrix * vec4(position,1.0);
+        gl_PointSize = 90.0 / -mv.z;
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader:`
+      varying float vOpacity;
+      void main(){
+        float d = length(gl_PointCoord - vec2(0.5));
+        if (d > 0.5) discard;
+        gl_FragColor = vec4(0.75,0.88,1.0, vOpacity * (1.0-d*2.0));
+      }`,
+    transparent:true, depthWrite:false
+  });
+  const points = new THREE.Points(geo, mat);
+  points.userData.isStarfield = true;
+  scene.add(points);
+})();
+
+function buildSkybox(){
+  const c = document.createElement("canvas");
+  c.width = 2; c.height = 256;
+  const ctx = c.getContext("2d");
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, "#000000");
+  grad.addColorStop(0.55, "#010206");
+  grad.addColorStop(1, "#03050c");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  const geo = new THREE.SphereGeometry(85, 24, 16);
+  const mat = new THREE.MeshBasicMaterial({ map:tex, side:THREE.BackSide, fog:false, depthWrite:false });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+}
+buildSkybox();
+
+function generateBeamTexture(){
+  const w = 128, h = 512;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  const gradH = ctx.createLinearGradient(0, 0, w, 0);
+  gradH.addColorStop(0, "rgba(255,255,255,0)");
+  gradH.addColorStop(0.5, "rgba(255,255,255,1)");
+  gradH.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradH;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "destination-in";
+  const gradV = ctx.createLinearGradient(0, 0, 0, h);
+  gradV.addColorStop(0, "rgba(255,255,255,1)");
+  gradV.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = gradV;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  return new THREE.CanvasTexture(c);
+}
+const beamTexture = generateBeamTexture();
+
+function buildBeam(x, rotY){
+  const geo = new THREE.PlaneGeometry(7, 46);
+  const mat = new THREE.MeshBasicMaterial({
+    map:beamTexture, color:0x6fd6ff, transparent:true, opacity:0.05, side:THREE.DoubleSide,
+    blending:THREE.AdditiveBlending, depthWrite:false, fog:false
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, 10, -6);
+  mesh.rotation.y = rotY;
+  mesh.rotation.x = -0.25;
+  scene.add(mesh);
+}
+buildBeam(-18, 0.55);
+buildBeam(18, -0.55);
+
+/* ============================================================
+   PODIUM (stacked tiers + circuit-textured top)
+   ============================================================ */
+function generateCircuitTexture(size){
+  const c = document.createElement("canvas");
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#0a0d18";
+  ctx.fillRect(0,0,size,size);
+  const cx = size/2, cy = size/2;
+  for (let i=0;i<70;i++){
+    let x = cx, y = cy;
+    ctx.strokeStyle = rnd() > 0.5 ? "rgba(87,227,255,0.5)" : "rgba(160,107,255,0.4)";
+    ctx.lineWidth = 1 + rnd()*1.5;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    const steps = 3 + Math.floor(rnd()*4);
+    let angle = rnd()*Math.PI*2;
+    for (let s=0;s<steps;s++){
+      angle += (rnd()-0.5) * 1.2;
+      const len = 40 + rnd()*90;
+      x += Math.cos(angle)*len;
+      y += Math.sin(angle)*len;
+      ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.beginPath(); ctx.arc(x,y,2.4,0,Math.PI*2); ctx.fill();
+  }
+  return new THREE.CanvasTexture(c);
+}
+const circuitTex = generateCircuitTexture(1024);
+circuitTex.colorSpace = THREE.SRGBColorSpace;
+
+const podiumGroup = new THREE.Group();
+scene.add(podiumGroup);
+const tierDefs = [
+  { r:9.4, h:0.55, y:-2.05 },
+  { r:8.0, h:0.55, y:-1.5 },
+  { r:6.7, h:0.5,  y:-1.0 }
+];
+tierDefs.forEach(t=>{
+  const geo = new THREE.CylinderGeometry(t.r, t.r*1.05, t.h, 64);
+  const mat = new THREE.MeshStandardMaterial({ color:0x0d101c, metalness:0.75, roughness:0.35 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = t.y;
+  podiumGroup.add(mesh);
+  const ringGeo = new THREE.TorusGeometry(t.r, 0.03, 8, 64);
+  const ringMat = new THREE.MeshBasicMaterial({ color:0x57e3ff, transparent:true, opacity:0.35 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.position.y = t.y + t.h/2;
+  ring.rotation.x = Math.PI/2;
+  podiumGroup.add(ring);
+});
+const topDisc = new THREE.Mesh(
+  new THREE.CylinderGeometry(6.7, 6.7, 0.5, 64),
+  new THREE.MeshStandardMaterial({ color:0x0b0e1a, metalness:0.6, roughness:0.5, emissive:0xffffff, emissiveMap:circuitTex, emissiveIntensity:0.85 })
+);
+topDisc.position.y = -0.75;
+podiumGroup.add(topDisc);
+
+/* ============================================================
+   LAMP POSITIONS (full ring around the hub)
+   ============================================================ */
+const lampPositions = [];
+for (let i=0;i<NUM_LAMPS;i++){
+  const angle = (i / NUM_LAMPS) * Math.PI * 2 - Math.PI/2;
+  const depthFactor = (i % 2 === 0) ? 1.0 : 0.82;
+  const radius = (RING_OUTER * 0.5 + RING_INNER * 0.5) * depthFactor + (i%2===0? (RING_OUTER-RING_INNER)*0.5 : 0);
+  const r = depthFactor === 1.0 ? RING_OUTER : RING_INNER;
+  lampPositions.push({
+    index:i,
+    x: Math.cos(angle) * r,
+    z: Math.sin(angle) * r,
+    angle: angle,
+    scale: depthFactor === 1.0 ? 1.0 : 0.85
+  });
+}
+
+/* ============================================================
+   TEXT SPRITE HELPER
+   ============================================================ */
+function makeTextSprite(text, color, sizePx){
+  const canvasEl = document.createElement("canvas");
+  canvasEl.width = 160; canvasEl.height = 64;
+  const ctx = canvasEl.getContext("2d");
+  const tex = new THREE.CanvasTexture(canvasEl);
+  function redraw(t, col){
+    ctx.clearRect(0,0,160,64);
+    ctx.font = `600 ${sizePx}px 'JetBrains Mono', monospace`;
+    ctx.fillStyle = col;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(t, 80, 32);
+    tex.needsUpdate = true;
+  }
+  redraw(text, color);
+  const mat = new THREE.SpriteMaterial({ map:tex, transparent:true, depthWrite:false });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.1, 0.44, 1);
+  return { sprite, mat, redraw };
+}
+
+/* ============================================================
+   CIRCUIT TRACES (hub -> each lamp), drawRange reveal + pulse dot
+   ============================================================ */
+const TUBULAR_SEG = 48, RADIAL_SEG = 6;
+const tracesGroup = new THREE.Group();
+scene.add(tracesGroup);
+const traces = [];
+
+lampPositions.forEach(lp=>{
+  const hub = new THREE.Vector3(0, FLOOR_Y + 0.02, 0);
+  const lampV = new THREE.Vector3(lp.x, FLOOR_Y + 0.02, lp.z);
+  const horizFirst = lp.index % 2 === 0;
+  let mid1, mid2;
+  if (horizFirst){
+    const midX = lampV.x * 0.55;
+    mid1 = new THREE.Vector3(midX, hub.y, hub.z);
+    mid2 = new THREE.Vector3(midX, hub.y, lampV.z);
+  } else {
+    const midZ = lampV.z * 0.5;
+    mid1 = new THREE.Vector3(hub.x, hub.y, midZ);
+    mid2 = new THREE.Vector3(lampV.x, hub.y, midZ);
+  }
+  const curve = new THREE.CurvePath();
+  curve.add(new THREE.LineCurve3(hub, mid1));
+  curve.add(new THREE.LineCurve3(mid1, mid2));
+  curve.add(new THREE.LineCurve3(mid2, lampV));
+
+  const dimGeo = new THREE.TubeGeometry(curve, TUBULAR_SEG, 0.045, RADIAL_SEG, false);
+  const dimMat = new THREE.MeshBasicMaterial({ color:0x22304f, transparent:true, opacity:0.6 });
+  const dimMesh = new THREE.Mesh(dimGeo, dimMat);
+  tracesGroup.add(dimMesh);
+
+  const brightGeo = new THREE.TubeGeometry(curve, TUBULAR_SEG, 0.07, RADIAL_SEG, false);
+  const brightMat = new THREE.MeshBasicMaterial({ color:0x7fe9ff, transparent:true, opacity:0.7 });
+  const brightMesh = new THREE.Mesh(brightGeo, brightMat);
+  brightGeo.setDrawRange(0, 0);
+  tracesGroup.add(brightMesh);
+
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.14, 12, 12),
+    new THREE.MeshBasicMaterial({ color:0xffffff })
+  );
+  dot.visible = false;
+  tracesGroup.add(dot);
+
+  traces.push({ curve, brightGeo, dot, indicesPerSeg: RADIAL_SEG*6, totalSeg: TUBULAR_SEG, progress:0, animating:false, animStart:0 });
+});
+
+/* ============================================================
+   CENTRAL CIRCUIT TREE (procedural 3D branches)
+   ============================================================ */
+const treeGroup = new THREE.Group();
+scene.add(treeGroup);
+const treeSegMeshes = [];
+const treeNodeMeshes = [];
+
+function genTree3D(origin, dir, length, radius, depth, maxDepth){
+  const end = origin.clone().add(dir.clone().multiplyScalar(length));
+  const segGeo = new THREE.CylinderGeometry(radius*0.6, radius, length, 6, 1);
+  segGeo.translate(0, length/2, 0);
+  const up = new THREE.Vector3(0,1,0);
+  const quat = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+  segGeo.applyQuaternion(quat);
+  segGeo.translate(origin.x, origin.y, origin.z);
+  const mat = new THREE.MeshBasicMaterial({ color:0x57e3ff, transparent:true, opacity:0 });
+  const mesh = new THREE.Mesh(segGeo, mat);
+  treeGroup.add(mesh);
+  treeSegMeshes.push({ mesh, mat, depth: maxDepth - depth });
+
+  if (depth <= 0){
+    const nodeMat = new THREE.MeshBasicMaterial({ color:0x9fe9ff, transparent:true, opacity:0 });
+    const node = new THREE.Mesh(new THREE.SphereGeometry(radius*1.8, 10, 10), nodeMat);
+    node.position.copy(end);
+    treeGroup.add(node);
+    treeNodeMeshes.push({ mesh:node, mat:nodeMat, depth: maxDepth - depth + 1 });
+    return;
+  }
+  const branches = depth > 2 ? 2 : (rnd() > 0.5 ? 2 : 3);
+  for (let b=0; b<branches; b++){
+    const axis = new THREE.Vector3(rnd()-0.5, rnd()*0.15, rnd()-0.5).normalize();
+    const angle = (18 + rnd()*22) * (Math.PI/180) * (b % 2 === 0 ? 1 : -1);
+    const newDir = dir.clone().applyAxisAngle(axis, angle).normalize();
+    genTree3D(end, newDir, length * (0.68 + rnd()*0.1), radius*0.68, depth-1, maxDepth);
+  }
+}
+genTree3D(new THREE.Vector3(0, FLOOR_Y, 0), new THREE.Vector3(0,1,0), 1.7, 0.14, 4, 4);
+
+const hubGlow = new THREE.Mesh(
+  new THREE.SphereGeometry(0.32, 20, 20),
+  new THREE.MeshBasicMaterial({ color:0x2a3252, transparent:true, opacity:0.7 })
+);
+hubGlow.position.set(0, FLOOR_Y + 0.05, 0);
+scene.add(hubGlow);
+
+const treeGlowPulse = new THREE.PointLight(0x8fe9ff, 0, 12, 2);
+treeGlowPulse.position.set(0, FLOOR_Y + 2.2, 0);
+scene.add(treeGlowPulse);
+
+/* ============================================================
+   LAMPS (faceted case design with glowing circuit screen)
+   ============================================================ */
+const lampsGroup = new THREE.Group();
+scene.add(lampsGroup);
+const lamps = [];
+
+/* chamfered (octagon-cut) case geometry, extruded and centered like a standard box */
+function buildCaseGeometry(width, depth, height, chamfer){
+  const w = width/2, d = depth/2, c = chamfer;
+  const shape = new THREE.Shape();
+  shape.moveTo(-w+c, -d);
+  shape.lineTo(w-c, -d);
+  shape.lineTo(w, -d+c);
+  shape.lineTo(w, d-c);
+  shape.lineTo(w-c, d);
+  shape.lineTo(-w+c, d);
+  shape.lineTo(-w, d-c);
+  shape.lineTo(-w, -d+c);
+  shape.closePath();
+  const geo = new THREE.ExtrudeGeometry(shape, { depth:height, bevelEnabled:true, bevelThickness:0.02, bevelSize:0.018, bevelSegments:2, curveSegments:1 });
+  geo.rotateX(-Math.PI/2);
+  geo.translate(0, -height/2, 0);
+  return geo;
+}
+const caseGeo = buildCaseGeometry(0.74, 0.68, 1.5, 0.15);
+const plinthGeo = buildCaseGeometry(0.98, 0.9, 0.22, 0.18);
+const plinthTopGeo = buildCaseGeometry(0.82, 0.76, 0.12, 0.16);
+
+/* shared mini circuit-screen texture for every lamp's glass front */
+function generateMiniTreeTexture(){
+  const w = 256, h = 384;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#050814";
+  ctx.fillRect(0, 0, w, h);
+  for (let i=0;i<40;i++){
+    ctx.fillStyle = rnd() > 0.5 ? "rgba(87,227,255,0.5)" : "rgba(160,107,255,0.4)";
+    ctx.beginPath();
+    ctx.arc(rnd()*w, rnd()*h, 0.8 + rnd()*1.2, 0, Math.PI*2);
+    ctx.fill();
+  }
+  function branch(x, y, angle, len, depth){
+    const x2 = x + Math.sin(angle)*len;
+    const y2 = y - Math.cos(angle)*len;
+    ctx.strokeStyle = depth > 1 ? "rgba(140,235,255,0.95)" : "rgba(170,120,255,0.85)";
+    ctx.lineWidth = Math.max(1, depth*0.9);
+    ctx.beginPath();
+    ctx.moveTo(x,y); ctx.lineTo(x2,y2); ctx.stroke();
+    if (depth <= 0){
+      ctx.fillStyle = "#dff6ff";
+      ctx.beginPath(); ctx.arc(x2,y2, 2.6, 0, Math.PI*2); ctx.fill();
+      return;
+    }
+    const branches = depth > 2 ? 2 : (rnd() > 0.5 ? 2 : 3);
+    for (let b=0;b<branches;b++){
+      const da = (0.28 + rnd()*0.3) * (b % 2 === 0 ? 1 : -1);
+      branch(x2, y2, angle + da, len * (0.68 + rnd()*0.12), depth-1);
+    }
+  }
+  branch(w/2, h - 14, 0, h*0.16, 4);
+  const grad = ctx.createRadialGradient(w/2, h*0.42, 4, w/2, h*0.42, h*0.5);
+  grad.addColorStop(0, "rgba(190,240,255,0.55)");
+  grad.addColorStop(1, "rgba(190,240,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+  return new THREE.CanvasTexture(c);
+}
+const miniTreeTex = generateMiniTreeTexture();
+
+lampPositions.forEach(lp=>{
+  const group = new THREE.Group();
+  group.position.set(lp.x, FLOOR_Y, lp.z);
+  group.rotation.y = Math.PI/2 - lp.angle; // faces outward, away from the hub
+  const inner = new THREE.Group();
+  inner.scale.setScalar(lp.scale);
+  group.add(inner);
+
+  const brushedMetal = new THREE.MeshStandardMaterial({ color:0x15161d, metalness:0.85, roughness:0.32 });
+
+  const plinth = new THREE.Mesh(plinthGeo, brushedMetal);
+  plinth.position.y = 0.11;
+  inner.add(plinth);
+
+  const plinthTop = new THREE.Mesh(plinthTopGeo, brushedMetal);
+  plinthTop.position.y = 0.22 + 0.06;
+  inner.add(plinthTop);
+
+  const caseBaseY = 0.28;
+  const housing = new THREE.Mesh(caseGeo, brushedMetal);
+  housing.position.y = caseBaseY + 0.75;
+  inner.add(housing);
+
+  /* glowing mini circuit-screens, front AND back, so every angle shows a lit face
+     (this is the "coreMat" driven by ignite/extinguish) */
+  const coreMat = new THREE.MeshBasicMaterial({ map:miniTreeTex, color:0x35547f, transparent:true, opacity:0.42 });
+  const core = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.05), coreMat);
+  core.position.set(0, housing.position.y, 0.345);
+  inner.add(core);
+  const coreBack = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.05), coreMat);
+  coreBack.position.set(0, housing.position.y, -0.345);
+  coreBack.rotation.y = Math.PI;
+  inner.add(coreBack);
+
+  /* thin protective glass over each screen */
+  const glassMat = new THREE.MeshPhysicalMaterial({ color:0x0c0e18, transparent:true, opacity:0.28, roughness:0.1, transmission:0.55, thickness:0.05 });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 1.14), glassMat);
+  glass.position.set(0, housing.position.y, 0.355);
+  inner.add(glass);
+  const glassBack = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 1.14), glassMat);
+  glassBack.position.set(0, housing.position.y, -0.355);
+  glassBack.rotation.y = Math.PI;
+  inner.add(glassBack);
+
+  /* glowing accent strips: top + bottom edges, and all four corner edges,
+     like the LED trim in the reference photo */
+  const finialMat = new THREE.MeshBasicMaterial({ color:0x4a6aa0 });
+  const stripTop = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.045, 0.62), finialMat);
+  stripTop.position.y = housing.position.y + 0.72;
+  inner.add(stripTop);
+  const stripBottom = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.045, 0.62), finialMat);
+  stripBottom.position.y = housing.position.y - 0.72;
+  inner.add(stripBottom);
+  [0.33, -0.33].forEach(zSign=>{
+    [-0.33, 0.33].forEach(xSign=>{
+      const corner = new THREE.Mesh(new THREE.BoxGeometry(0.045, 1.3, 0.045), finialMat);
+      corner.position.set(xSign, housing.position.y, zSign);
+      inner.add(corner);
+    });
+  });
+
+  const bloomMat = new THREE.MeshBasicMaterial({ color:0x7fe9ff, transparent:true, opacity:0, blending:THREE.AdditiveBlending, depthWrite:false });
+  const bloomDisc = new THREE.Mesh(new THREE.CircleGeometry(1.0, 32), bloomMat);
+  bloomDisc.rotation.x = -Math.PI/2;
+  bloomDisc.position.y = 0.03;
+  inner.add(bloomDisc);
+
+  const ringMat = new THREE.MeshBasicMaterial({ color:0xa06bff, transparent:true, opacity:0 });
+  const selectRing = new THREE.Mesh(new THREE.RingGeometry(0.78, 0.92, 32), ringMat);
+  selectRing.rotation.x = -Math.PI/2;
+  selectRing.position.y = 0.05;
+  inner.add(selectRing);
+
+  const numSprite = makeTextSprite(String(lp.index+1).padStart(2,"0"), "#4a5680", 26);
+  numSprite.sprite.position.set(0, -0.35, 0.3);
+  numSprite.sprite.scale.set(0.55,0.24,1);
+  inner.add(numSprite.sprite);
+
+  const idSprite = makeTextSprite("", "#8fe9ff", 22);
+  idSprite.sprite.position.set(0, housing.position.y + 0.95, 0.3);
+  idSprite.sprite.scale.set(1.0,0.4,1);
+  idSprite.mat.opacity = 0;
+  inner.add(idSprite.sprite);
+
+  const hitBox = new THREE.Mesh(
+    new THREE.BoxGeometry(1.05, 2.2, 1.05),
+    new THREE.MeshBasicMaterial({ visible:false })
+  );
+  hitBox.position.y = 1.0;
+  hitBox.userData.lampIndex = lp.index;
+  inner.add(hitBox);
+
+  lampsGroup.add(group);
+
+  lamps.push({
+    index:lp.index, group, inner, core, coreMat, finialMat, bloomMat, ringMat,
+    idSprite, hitBox, hoverTarget:1, flashStart:0
+  });
+});
+
+const hitBoxes = lamps.map(l=>l.hitBox);
+
+/* ============================================================
+   RAYCASTING / INTERACTION
+   ============================================================ */
+const raycaster = new THREE.Raycaster();
+const mouseNDC = new THREE.Vector2();
+let hoveredIndex = null;
+
+function updateMouseNDC(e){
+  const rect = canvas.getBoundingClientRect();
+  mouseNDC.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseNDC.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+canvas.addEventListener("pointermove", (e)=>{
+  if (isDragging || isPointerDown){
+    handleDragMove(e);
+    return;
+  }
+  updateMouseNDC(e);
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObjects(hitBoxes, false);
+  const idx = hits.length ? hits[0].object.userData.lampIndex : null;
+  if (idx !== hoveredIndex){
+    hoveredIndex = idx;
+    canvas.style.cursor = idx !== null ? "pointer" : "default";
+  }
+});
+
+let isPointerDown = false;
+let isDragging = false;
+let dragStartX = 0, dragStartY = 0, dragLastX = 0;
+const DRAG_THRESHOLD_PX = 6;
+const DRAG_SENSITIVITY = 0.0055;
+
+canvas.addEventListener("pointerdown", (e)=>{
+  isPointerDown = true;
+  isDragging = false;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  dragLastX = e.clientX;
+  try { canvas.setPointerCapture(e.pointerId); } catch(err){}
+});
+
+function handleDragMove(e){
+  const moved = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
+  if (moved > DRAG_THRESHOLD_PX) isDragging = true;
+  if (isDragging){
+    const deltaX = e.clientX - dragLastX;
+    azimuth -= deltaX * DRAG_SENSITIVITY;
+    dragLastX = e.clientX;
+    pauseRotation(3000);
+    canvas.style.cursor = "grabbing";
+  }
+}
+
+canvas.addEventListener("pointerup", (e)=>{
+  if (!isDragging){
+    updateMouseNDC(e);
+    raycaster.setFromCamera(mouseNDC, camera);
+    const hits = raycaster.intersectObjects(hitBoxes, false);
+    if (hits.length) onLampClick(hits[0].object.userData.lampIndex);
+  } else {
+    pauseRotation(3000);
+  }
+  isPointerDown = false;
+  isDragging = false;
+  canvas.style.cursor = hoveredIndex !== null ? "pointer" : "default";
+  try { canvas.releasePointerCapture(e.pointerId); } catch(err){}
+});
+
+canvas.addEventListener("pointercancel", ()=>{ isPointerDown = false; isDragging = false; });
+
+canvas.addEventListener("wheel", (e)=>{
+  e.preventDefault();
+  orbitRadius = THREE.MathUtils.clamp(orbitRadius + e.deltaY * 0.016, MIN_ORBIT_RADIUS, MAX_ORBIT_RADIUS);
+}, { passive:false });
+
+/* ============================================================
+   CAMERA ORBIT (slow auto-rotate, pauses on interaction)
+   ============================================================ */
+const MIN_ORBIT_RADIUS = 11;
+const MAX_ORBIT_RADIUS = 30;
+let orbitRadius = 15.5;
+const ORBIT_ELEVATION_DEG = 22;
+const BASE_ANGULAR_SPEED = (Math.PI*2) / 130; // full turn ~130s
+let azimuth = -Math.PI/2;
+let currentSpeed = BASE_ANGULAR_SPEED;
+let rotationPausedUntil = 0;
+let rotationHardPause = false;
+let rotationManuallyPaused = false;
+let cameraTiltOffset = 0;
+
+function pauseRotation(ms){
+  rotationPausedUntil = Math.max(rotationPausedUntil, performance.now() + ms);
+}
+function setHardPause(on){
+  rotationHardPause = on;
+}
+
+function easeInOutCubic(t){
+  return t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+}
+
+function orbitPositionAt(az){
+  const elevRad = ORBIT_ELEVATION_DEG * Math.PI/180;
+  return new THREE.Vector3(
+    cameraTarget.x + Math.cos(az) * orbitRadius * Math.cos(elevRad),
+    cameraTarget.y + Math.sin(elevRad) * orbitRadius,
+    cameraTarget.z + Math.sin(az) * orbitRadius * Math.cos(elevRad)
+  );
+}
+
+/* ============================================================
+   GUEST WELCOME CAMERA FOCUS (zoom to a candle, show welcome card)
+   ============================================================ */
+const FOCUS_RADIUS = 6.2;
+const FOCUS_ELEVATION_DEG = 13;
+const FOCUS_TARGET_Y = 1.05;
+const FOCUS_IN_MS_BASE = 1000;
+const FOCUS_HOLD_MS = 6000;
+const FOCUS_OUT_MS_BASE = 900;
+let welcomeSpeedFactor = 1;
+function getFocusInMs(){ return FOCUS_IN_MS_BASE / welcomeSpeedFactor; }
+function getFocusOutMs(){ return FOCUS_OUT_MS_BASE / welcomeSpeedFactor; }
+
+const cameraFocus = { active:false, phase:"idle", lampIndex:null, phaseStart:0, savedAzimuth:0 };
+const welcomeQueue = [];
+const welcomeCardEl = document.getElementById("welcomeCard");
+const welcomeCardPhoto = document.getElementById("welcomeCardPhoto");
+const welcomeCardName = document.getElementById("welcomeCardName");
+const welcomeCardProfession = document.getElementById("welcomeCardProfession");
+
+function focusPositionFor(index){
+  const lp = lampPositions[index];
+  const elevRad = FOCUS_ELEVATION_DEG * Math.PI/180;
+  return new THREE.Vector3(
+    lp.x + Math.cos(lp.angle) * FOCUS_RADIUS * Math.cos(elevRad),
+    FOCUS_TARGET_Y + FOCUS_RADIUS * Math.sin(elevRad),
+    lp.z + Math.sin(lp.angle) * FOCUS_RADIUS * Math.cos(elevRad)
+  );
+}
+function focusTargetFor(index){
+  const lp = lampPositions[index];
+  return new THREE.Vector3(lp.x, FOCUS_TARGET_Y, lp.z);
+}
+
+function queueWelcome(index){
+  welcomeQueue.push(index);
+  if (!cameraFocus.active) processWelcomeQueue();
+}
+
+function processWelcomeQueue(){
+  if (welcomeQueue.length === 0) return;
+  const index = welcomeQueue.shift();
+  const guest = guests[index];
+  if (!guest){ processWelcomeQueue(); return; }
+  startCameraFocus(index);
+  showWelcomeCardContent(guest);
+  playGuestAudio(index);
+}
+
+function startCameraFocus(index){
+  cameraFocus.active = true;
+  cameraFocus.phase = "in";
+  cameraFocus.lampIndex = index;
+  cameraFocus.phaseStart = performance.now();
+  cameraFocus.savedAzimuth = azimuth;
+}
+
+function showWelcomeCardContent(guest){
+  welcomeCardPhoto.src = guest.photo || "";
+  welcomeCardPhoto.style.display = guest.photo ? "block" : "none";
+  welcomeCardName.textContent = guest.name || "Guest";
+  welcomeCardProfession.textContent = guest.profession || "";
+  requestAnimationFrame(()=> welcomeCardEl.classList.add("show"));
+}
+
+function hideWelcomeCard(){
+  welcomeCardEl.classList.remove("show");
+  stopGuestAudio();
+}
+
+function cancelWelcomeSequence(){
+  welcomeQueue.length = 0;
+  if (cameraFocus.active){
+    cameraFocus.phase = "out";
+    cameraFocus.phaseStart = performance.now() - getFocusOutMs();
+  }
+  hideWelcomeCard();
+}
+
+function updateCameraFocus(now, delta){
+  if (!cameraFocus.active) return false;
+  const elapsed = now - cameraFocus.phaseStart;
+  const index = cameraFocus.lampIndex;
+  const toPos = focusPositionFor(index);
+  const toTarget = focusTargetFor(index);
+
+  if (cameraFocus.phase === "in"){
+    // keep easing the rotation speed down while blending toward the focus shot,
+    // instead of snapping the rotation to a stop
+    currentSpeed = THREE.MathUtils.lerp(currentSpeed, 0, 0.06);
+    if (!isDragging) azimuth += currentSpeed * delta;
+    const liveNormalPos = orbitPositionAt(azimuth);
+    const t = Math.min(1, elapsed / getFocusInMs());
+    const b = easeInOutCubic(t);
+    camera.position.lerpVectors(liveNormalPos, toPos, b);
+    camera.lookAt(cameraTarget.clone().lerp(toTarget, b));
+    if (t >= 1){
+      cameraFocus.savedAzimuth = azimuth;
+      cameraFocus.phase = "hold";
+      cameraFocus.phaseStart = now;
+    }
+  } else if (cameraFocus.phase === "hold"){
+    camera.position.copy(toPos);
+    camera.lookAt(toTarget);
+    if (elapsed >= FOCUS_HOLD_MS){
+      cameraFocus.phase = "out";
+      cameraFocus.phaseStart = now;
+      hideWelcomeCard();
+    }
+  } else if (cameraFocus.phase === "out"){
+    const fromPos = orbitPositionAt(cameraFocus.savedAzimuth);
+    const fromTarget = cameraTarget.clone();
+    const t = Math.min(1, elapsed / getFocusOutMs());
+    const b = easeInOutCubic(t);
+    camera.position.lerpVectors(toPos, fromPos, b);
+    camera.lookAt(toTarget.clone().lerp(fromTarget, b));
+    if (t >= 1){
+      cameraFocus.active = false;
+      cameraFocus.phase = "idle";
+      azimuth = cameraFocus.savedAzimuth;
+      if (welcomeQueue.length > 0) processWelcomeQueue();
+    }
+  }
+  camera.rotateX(cameraTiltOffset);
+  document.getElementById("rotLabel").textContent = "Welcoming";
+  return true;
+}
+
+function updateCamera(delta){
+  const now = performance.now();
+  if (updateCameraFocus(now, delta)) return;
+  const targetSpeed = (now < rotationPausedUntil || rotationHardPause || isPointerDown || rotationManuallyPaused) ? 0 : BASE_ANGULAR_SPEED;
+  currentSpeed = THREE.MathUtils.lerp(currentSpeed, targetSpeed, 0.02);
+  if (!isDragging) azimuth += currentSpeed * delta;
+  camera.position.copy(orbitPositionAt(azimuth));
+  camera.lookAt(cameraTarget);
+  camera.rotateX(cameraTiltOffset);
+
+  document.getElementById("rotLabel").textContent = currentSpeed > BASE_ANGULAR_SPEED*0.3 ? "Rotating" : "Paused";
+}
+
+/* ============================================================
+   CORE LIGHTING CONTROL FUNCTIONS
+   ============================================================ */
+function triggerLamp(index, opts){
+  opts = opts || {};
+  if (state.lit[index]) return;
+  const t = traces[index];
+  t.animating = true;
+  t.animStart = performance.now();
+  t.dot.visible = true;
+  t.skipWelcome = !!opts.skipWelcome;
+}
+
+function updateTraceAnimations(now){
+  traces.forEach((t, i)=>{
+    if (!t.animating) return;
+    const duration = 650;
+    const p = Math.min(1, (now - t.animStart) / duration);
+    t.progress = p;
+    const seg = Math.floor(p * t.totalSeg);
+    t.brightGeo.setDrawRange(0, seg * t.indicesPerSeg);
+    const pt = t.curve.getPointAt(p);
+    t.dot.position.copy(pt);
+    if (p >= 1){
+      t.animating = false;
+      t.dot.visible = false;
+      igniteLamp(i);
+    }
+  });
+}
+
+function igniteLamp(index){
+  state.lit[index] = true;
+  state.litCount++;
+  const l = lamps[index];
+  l.igniteStart = performance.now();
+  l.igniteTarget = 1;
+  updateStatusBar();
+  const skipWelcome = traces[index].skipWelcome;
+  traces[index].skipWelcome = false;
+  if (!skipWelcome && guests[index]){
+    queueWelcome(index);
+  }
+  if (state.litCount === NUM_LAMPS && !state.treeRevealed){
+    setTimeout(revealTree, 300);
+  }
+}
+
+function extinguishLamp(index){
+  if (!state.lit[index]) return;
+  state.lit[index] = false;
+  state.litCount--;
+  const l = lamps[index];
+  l.igniteStart = performance.now();
+  l.igniteTarget = 0;
+  const t = traces[index];
+  t.brightGeo.setDrawRange(0, 0);
+  t.progress = 0;
+  t.animating = false;
+  t.dot.visible = false;
+  if (state.treeRevealed){ hideTree(); }
+  updateStatusBar();
+}
+
+function revealTree(){
+  state.treeRevealed = true;
+  treeSegMeshes.forEach(s=>{
+    setTimeout(()=>{ s.revealStart = performance.now(); s.revealing = true; }, s.depth * 160);
+  });
+  treeNodeMeshes.forEach(n=>{
+    setTimeout(()=>{ n.revealStart = performance.now(); n.revealing = true; }, n.depth * 160 + 120);
+  });
+  hubGlow.userData.lit = true;
+  hubGlow.userData.revealStart = performance.now();
+  treeGlowPulse.userData.on = true;
+  showToast("All lamps lit \u2014 the circuit tree glows", "ok");
+}
+
+function hideTree(){
+  state.treeRevealed = false;
+  treeSegMeshes.forEach(s=>{ s.mat.opacity = 0; s.revealing = false; });
+  treeNodeMeshes.forEach(n=>{ n.mat.opacity = 0; n.revealing = false; });
+  hubGlow.userData.lit = false;
+  hubGlow.material.opacity = 0.7;
+  hubGlow.material.color.set(0x2a3252);
+  treeGlowPulse.userData.on = false;
+  treeGlowPulse.intensity = 0;
+}
+
+function resetAll(){
+  for (let i=0;i<NUM_LAMPS;i++){
+    state.lit[i] = false;
+    const l = lamps[i];
+    l.igniteStart = performance.now();
+    l.igniteTarget = 0;
+    l.coreMat.opacity = 0.42;
+    l.coreMat.color.set(0x35547f);
+    l.finialMat.color.set(0x4a6aa0);
+    l.bloomMat.opacity = 0;
+    const t = traces[i];
+    t.brightGeo.setDrawRange(0, 0);
+    t.progress = 0; t.animating = false; t.dot.visible = false;
+  }
+  state.litCount = 0;
+  hideTree();
+  cancelWelcomeSequence();
+  updateStatusBar();
+  showToast("All lamps reset", "ok");
+}
+
+function turnOnAll(){
+  let delay = 0;
+  for (let i=0;i<NUM_LAMPS;i++){
+    if (!state.lit[i]){
+      setTimeout(()=> triggerLamp(i, {skipWelcome:true}), delay);
+      delay += 160;
+    }
+  }
+}
+
+function updateStatusBar(){
+  document.getElementById("litCount").textContent = state.litCount;
+  lampGridEls.forEach((btn, i)=> btn.classList.toggle("on", state.lit[i]));
+  document.getElementById("quickToggleDot").classList.toggle("all-on", state.litCount >= NUM_LAMPS);
+}
+
+/* per-frame easing for ignite / extinguish + hover + flash */
+function updateLampVisuals(now){
+  lamps.forEach(l=>{
+    if (l.igniteStart !== undefined){
+      const p = Math.min(1, (now - l.igniteStart) / 500);
+      const eased = 1 - Math.pow(1-p, 3);
+      l.coreMat.opacity = l.igniteTarget === 1 ? THREE.MathUtils.lerp(0.42, 1, eased) : THREE.MathUtils.lerp(1, 0.42, eased);
+      l.coreMat.color.set(l.igniteTarget === 1 ? 0x9fe9ff : 0x35547f);
+      l.finialMat.color.set(l.igniteTarget === 1 ? 0x7fe9ff : 0x4a6aa0);
+      l.bloomMat.opacity = l.igniteTarget === 1 ? THREE.MathUtils.lerp(0, 0.55, eased) : THREE.MathUtils.lerp(0.55, 0, eased);
+      if (p >= 1){
+        // quick flash overshoot right as it finishes igniting
+        if (l.igniteTarget === 1 && !l.flashed){
+          l.flashStart = now;
+          l.flashed = true;
+        }
+        delete l.igniteStart;
+      }
+    } else if (l.igniteTarget === 0){
+      l.flashed = false;
+    }
+
+    let scale = (hoveredIndex === l.index) ? 1.08 : 1.0;
+    if (l.flashStart){
+      const fp = (now - l.flashStart) / 420;
+      if (fp < 1){
+        scale *= 1 + 0.22 * Math.sin(fp * Math.PI) * (1-fp);
+      } else {
+        l.flashStart = 0;
+      }
+    }
+    l.inner.scale.setScalar(THREE.MathUtils.lerp(l.inner.scale.x, scale * lampPositions[l.index].scale, 0.25));
+
+    // learn-mode selection ring pulse
+    if (state.learnMode && state.learnSelected === l.index){
+      l.ringMat.opacity = 0.4 + 0.4 * Math.sin(now * 0.005);
+    } else {
+      l.ringMat.opacity = THREE.MathUtils.lerp(l.ringMat.opacity, 0, 0.2);
+    }
+  });
+}
+
+function updateTreeVisuals(now){
+  treeSegMeshes.forEach(s=>{
+    if (s.revealing){
+      const p = Math.min(1, (now - s.revealStart) / 500);
+      s.mat.opacity = THREE.MathUtils.lerp(0, 0.68, p);
+      if (p >= 1) s.revealing = false;
+    }
+  });
+  treeNodeMeshes.forEach(n=>{
+    if (n.revealing){
+      const p = Math.min(1, (now - n.revealStart) / 500);
+      n.mat.opacity = THREE.MathUtils.lerp(0, 0.8, p);
+      if (p >= 1) n.revealing = false;
+    }
+  });
+  if (hubGlow.userData.lit){
+    const p = Math.min(1, (now - hubGlow.userData.revealStart) / 600);
+    hubGlow.material.opacity = THREE.MathUtils.lerp(0.7, 1, p);
+    hubGlow.material.color.lerpColors(new THREE.Color(0x2a3252), new THREE.Color(0x9fe9ff), p);
+  }
+  if (treeGlowPulse.userData.on){
+    treeGlowPulse.intensity = 1.3 + Math.sin(now*0.0016)*0.45;
+  }
+}
+
+/* ============================================================
+   LAMP CLICK HANDLER (stage + learn mode)
+   ============================================================ */
+function onLampClick(index){
+  if (state.learnMode){
+    selectLampForLearning(index);
+    return;
+  }
+  if (state.lit[index]) extinguishLamp(index);
+  else triggerLamp(index);
+}
+
+/* ============================================================
+   MENU / PANEL PLUMBING
+   ============================================================ */
+const panels = ["mainPanel","connectPanel","manualPanel","learnPanel","heightPanel","guestPanel","musicPanel"];
+function closeAllPanels(){ panels.forEach(id=> document.getElementById(id).classList.remove("open")); }
+function openPanel(id){ closeAllPanels(); document.getElementById(id).classList.add("open"); }
+
+document.getElementById("menuBtn").addEventListener("click", ()=>{
+  const p = document.getElementById("mainPanel");
+  p.classList.contains("open") ? closeAllPanels() : openPanel("mainPanel");
+});
+
+const rotateIcon = document.getElementById("rotateIcon");
+const rotateMenuLabel = document.getElementById("rotateMenuLabel");
+function toggleRotation(){
+  rotationManuallyPaused = !rotationManuallyPaused;
+  if (rotationManuallyPaused){
+    rotateIcon.innerHTML = '<path d="M7 5l12 7-12 7V5z"></path>';
+    rotateMenuLabel.innerHTML = 'Play rotation<small>Resume the camera turning</small>';
+    showToast("Rotation paused", "ok");
+  } else {
+    rotateIcon.innerHTML = '<rect x="6" y="5" width="4" height="14" rx="1"></rect><rect x="14" y="5" width="4" height="14" rx="1"></rect>';
+    rotateMenuLabel.innerHTML = 'Pause rotation<small>Stop the camera turning</small>';
+    showToast("Rotation resumed", "ok");
+  }
+}
+
+document.querySelectorAll("[data-close]").forEach(btn=>{
+  btn.addEventListener("click", ()=> document.getElementById(btn.dataset.close).classList.remove("open"));
+});
+document.querySelectorAll("[data-action]").forEach(item=>{
+  item.addEventListener("click", ()=>{
+    const action = item.dataset.action;
+    if (action === "open-connect") openPanel("connectPanel");
+    if (action === "open-manual") openPanel("manualPanel");
+    if (action === "open-learn") openPanel("learnPanel");
+    if (action === "open-height") openPanel("heightPanel");
+    if (action === "open-music") openPanel("musicPanel");
+    if (action === "open-guests") openPanel("guestPanel");
+    if (action === "turn-on-all"){ turnOnAll(); closeAllPanels(); }
+    if (action === "reset-all"){ resetAll(); closeAllPanels(); }
+    if (action === "toggle-rotation"){ toggleRotation(); }
+  });
+});
+
+/* ============================================================
+   MANUAL CONTROL PANEL
+   ============================================================ */
+const lampGrid = document.getElementById("lampGrid");
+const lampGridEls = [];
+for (let i=0;i<NUM_LAMPS;i++){
+  const b = document.createElement("div");
+  b.className = "lamp-toggle";
+  b.innerHTML = `<span class="n">${String(i+1).padStart(2,"0")}</span>`;
+  b.addEventListener("click", ()=>{ state.lit[i] ? extinguishLamp(i) : triggerLamp(i); });
+  lampGrid.appendChild(b);
+  lampGridEls.push(b);
+}
+document.getElementById("manualAllOnBtn").addEventListener("click", turnOnAll);
+document.getElementById("manualAllOffBtn").addEventListener("click", resetAll);
+
+/* ============================================================
+   QUICK ALL-LIGHTS TOGGLE (small dot button + "L" key shortcut)
+   ============================================================ */
+function toggleAllLights(){
+  if (state.litCount >= NUM_LAMPS) resetAll();
+  else turnOnAll();
+}
+document.getElementById("quickToggleDot").addEventListener("click", toggleAllLights);
+
+function isTypingInField(el){
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || el.isContentEditable;
+}
+window.addEventListener("keydown", (e)=>{
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l" && !isTypingInField(document.activeElement)){
+    e.preventDefault();
+    toggleAllLights();
+  }
+});
+
+/* ============================================================
+   CAMERA HEIGHT CONTROL (moves the view up/down, same angle)
+   ============================================================ */
+const MIN_CAM_HEIGHT_OFFSET = -2.4;
+const MAX_CAM_HEIGHT_OFFSET = 3.2;
+const DEFAULT_CAM_HEIGHT_OFFSET = -2.4;
+let cameraHeightOffset = DEFAULT_CAM_HEIGHT_OFFSET;
+const heightSlider = document.getElementById("heightSlider");
+
+function setCameraHeightOffset(v){
+  cameraHeightOffset = THREE.MathUtils.clamp(v, MIN_CAM_HEIGHT_OFFSET, MAX_CAM_HEIGHT_OFFSET);
+  cameraTarget.y = BASE_TARGET_Y + cameraHeightOffset;
+  heightSlider.value = cameraHeightOffset;
+}
+setCameraHeightOffset(DEFAULT_CAM_HEIGHT_OFFSET);
+
+heightSlider.addEventListener("input", (e)=> setCameraHeightOffset(parseFloat(e.target.value)));
+document.getElementById("heightUpBtn").addEventListener("click", ()=> setCameraHeightOffset(cameraHeightOffset + 0.35));
+document.getElementById("heightDownBtn").addEventListener("click", ()=> setCameraHeightOffset(cameraHeightOffset - 0.35));
+document.getElementById("heightResetBtn").addEventListener("click", ()=> setCameraHeightOffset(DEFAULT_CAM_HEIGHT_OFFSET));
+
+/* ============================================================
+   LOOK TILT CONTROL (tilts the view up/down, camera stays put)
+   ============================================================ */
+const MIN_TILT_DEG = -25;
+const MAX_TILT_DEG = 25;
+const tiltSlider = document.getElementById("tiltSlider");
+
+function setCameraTiltDeg(deg){
+  const clamped = THREE.MathUtils.clamp(deg, MIN_TILT_DEG, MAX_TILT_DEG);
+  cameraTiltOffset = clamped * Math.PI / 180;
+  tiltSlider.value = clamped;
+}
+
+tiltSlider.addEventListener("input", (e)=> setCameraTiltDeg(parseFloat(e.target.value)));
+document.getElementById("tiltUpBtn").addEventListener("click", ()=> setCameraTiltDeg((cameraTiltOffset * 180/Math.PI) + 5));
+document.getElementById("tiltDownBtn").addEventListener("click", ()=> setCameraTiltDeg((cameraTiltOffset * 180/Math.PI) - 5));
+document.getElementById("tiltResetBtn").addEventListener("click", ()=> setCameraTiltDeg(0));
+
+/* ============================================================
+   WELCOME CARD SPEED (only affects the guest zoom-focus timing)
+   ============================================================ */
+const welcomeSpeedSlider = document.getElementById("welcomeSpeedSlider");
+function setWelcomeSpeedFactor(v){
+  welcomeSpeedFactor = THREE.MathUtils.clamp(v, 0.5, 2);
+  welcomeSpeedSlider.value = welcomeSpeedFactor;
+  const cardMs = (0.9 / welcomeSpeedFactor).toFixed(2);
+  welcomeCardEl.style.transition = `right ${cardMs}s cubic-bezier(.2,.8,.25,1), opacity ${cardMs}s ease`;
+}
+setWelcomeSpeedFactor(1);
+welcomeSpeedSlider.addEventListener("input", (e)=> setWelcomeSpeedFactor(parseFloat(e.target.value)));
+document.getElementById("welcomeSpeedResetBtn").addEventListener("click", ()=> setWelcomeSpeedFactor(1));
+
+/* ============================================================
+   CONNECT CONTROLLER (real Web Serial link to the Arduino)
+   ============================================================ */
+const BAUD_RATE = 9600;
+const LINE_PREFIX = "CARD:";
+let serialPort = null;
+let serialReader = null;
+let serialKeepReading = false;
+
+function setConnected(on){
+  state.connected = on;
+  document.getElementById("connDot").classList.toggle("connected", on);
+  document.getElementById("connDotSmall").classList.toggle("on", on);
+  document.getElementById("connDotBig").classList.toggle("on", on);
+  document.getElementById("connDotBar").classList.toggle("on", on);
+  document.getElementById("connLabel").textContent = on ? "Controller connected" : "Controller not connected";
+  document.getElementById("connStatusText").textContent = on ? "Connected" : "Not connected";
+  document.getElementById("connLabelBar").textContent = on ? "Connected" : "Not connected";
+}
+
+function logRawSerial(text){
+  try {
+    const el = document.getElementById("serialRawLog");
+    const time = new Date().toLocaleTimeString([], {hour12:false});
+    el.textContent += `\n[${time}] ${text}`;
+    const lines = el.textContent.split("\n");
+    if (lines.length > 60) el.textContent = lines.slice(-60).join("\n");
+    el.scrollTop = el.scrollHeight;
+  } catch (e){
+    console.error("logRawSerial failed:", e);
+  }
+}
+document.getElementById("serialTestLogBtn").addEventListener("click", ()=>{
+  logRawSerial("test line \u2014 if you can see this, the log box itself works fine");
+});
+
+async function connectToController(){
+  if (!("serial" in navigator)){
+    showToast("Web Serial isn't supported here \u2014 use Chrome or Edge on desktop", "err");
+    return;
+  }
+  if (location.protocol === "file:"){
+    showToast("Serve this page from localhost first \u2014 it can't read serial from a double-clicked file", "err");
+    return;
+  }
+  const dot = document.getElementById("connDotBig");
+  dot.classList.add("busy");
+  document.getElementById("connStatusText").textContent = "Select the Arduino's port\u2026";
+  try {
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({ baudRate: BAUD_RATE });
+    setConnected(true);
+    showToast("Arduino connected", "ok");
+    logRawSerial(`connected at ${BAUD_RATE} baud \u2014 waiting for data\u2026`);
+    readSerialLoop();
+  } catch (err){
+    showToast("Connection cancelled or failed: " + err.message, "err");
+    document.getElementById("connStatusText").textContent = "Not connected";
+    logRawSerial(`connection failed: ${err.message}`);
+  } finally {
+    dot.classList.remove("busy");
+  }
+}
+
+async function readSerialLoop(){
+  serialKeepReading = true;
+  const textDecoder = new TextDecoderStream();
+  serialPort.readable.pipeTo(textDecoder.writable).catch(()=>{});
+  serialReader = textDecoder.readable.getReader();
+  let buffer = "";
+  try {
+    while (serialKeepReading){
+      const { value, done } = await serialReader.read();
+      if (done) break;
+      if (value) logRawSerial(`raw chunk: ${JSON.stringify(value)}`);
+      buffer += value;
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0){
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (line) handleSerialLine(line);
+      }
+    }
+  } catch (err){
+    if (serialKeepReading){
+      showToast("Serial read error: " + err.message, "err");
+      logRawSerial(`read error: ${err.message}`);
+    }
+  } finally {
+    try { serialReader.releaseLock(); } catch(e){}
+  }
+}
+
+function handleSerialLine(line){
+  logRawSerial(`line received: "${line}"`);
+  let cardId = line;
+  if (line.startsWith(LINE_PREFIX)) cardId = line.slice(LINE_PREFIX.length).trim();
+  if (!cardId) return;
+  handleControllerTap(cardId);
+}
+
+async function disconnectController(){
+  serialKeepReading = false;
+  try { if (serialReader) await serialReader.cancel(); } catch(e){}
+  try { if (serialPort) await serialPort.close(); } catch(e){}
+  serialPort = null;
+  setConnected(false);
+  showToast("Controller disconnected");
+  logRawSerial("disconnected");
+}
+
+document.getElementById("connectBtn").addEventListener("click", connectToController);
+document.getElementById("disconnectBtn").addEventListener("click", disconnectController);
+
+function handleControllerTap(cardId){
+  if (state.learnMode){
+    if (state.learnSelected === null){
+      showToast("Tap a lamp on stage first, then scan the card", "err");
+      return;
+    }
+    assignIdInput.value = cardId;
+    if (assignIdToLamp(state.learnSelected, cardId)) cancelLearnSelection();
+    return;
+  }
+  const idx = state.idMap[cardId];
+  if (idx === undefined){
+    showToast(`Unknown card: ${cardId}`, "err");
+    return;
+  }
+  triggerLamp(idx);
+  showToast(`Card ${cardId} \u2192 Lamp ${String(idx+1).padStart(2,"0")}`, "ok");
+}
+document.getElementById("scanTriggerBtn").addEventListener("click", ()=>{
+  const val = document.getElementById("scanIdInput").value.trim();
+  if (!val){ showToast("Enter a card ID first", "err"); return; }
+  handleControllerTap(val);
+});
+
+/* ============================================================
+   ID LEARNER MODE
+   ============================================================ */
+const learnToggleBtn = document.getElementById("learnToggleBtn");
+const learnHint = document.getElementById("learnHint");
+const assignInline = document.getElementById("assignInline");
+const assignIdInput = document.getElementById("assignIdInput");
+
+function setLearnMode(on){
+  state.learnMode = on;
+  learnToggleBtn.textContent = on ? "Turn off ID learner" : "Turn on ID learner";
+  learnToggleBtn.classList.toggle("primary", !on);
+  learnHint.textContent = on
+    ? "ID learner is on \u2014 tap a lamp on stage to link it to a card."
+    : "ID learner is off \u2014 lamps behave normally when tapped.";
+  if (!on) cancelLearnSelection();
+}
+learnToggleBtn.addEventListener("click", ()=> setLearnMode(!state.learnMode));
+
+function selectLampForLearning(index){
+  state.learnSelected = index;
+  setHardPause(true);
+  document.getElementById("assignLampLabel").textContent = `Lamp ${String(index+1).padStart(2,"0")}`;
+  assignIdInput.value = state.lampToId[index] || "";
+  assignInline.classList.add("show");
+  positionAssignInline(index);
+  assignIdInput.focus();
+}
+
+function positionAssignInline(index){
+  const lamp = lamps[index];
+  const worldPos = new THREE.Vector3(0, 1.9, 0);
+  lamp.group.localToWorld(worldPos);
+  const proj = worldPos.clone().project(camera);
+  const rect = canvas.getBoundingClientRect();
+  const x = (proj.x * 0.5 + 0.5) * rect.width + rect.left;
+  const y = (-proj.y * 0.5 + 0.5) * rect.height + rect.top;
+  let left = x + 24, top = y - 40;
+  left = Math.min(left, window.innerWidth - 230);
+  top = Math.max(10, Math.min(top, window.innerHeight - 160));
+  assignInline.style.left = left + "px";
+  assignInline.style.top = top + "px";
+}
+
+function cancelLearnSelection(){
+  state.learnSelected = null;
+  setHardPause(false);
+  assignInline.classList.remove("show");
+}
+document.getElementById("assignCancelBtn").addEventListener("click", cancelLearnSelection);
+
+function assignIdToLamp(idx, val){
+  if (idx === null || idx === undefined) return false;
+  if (!val){ showToast("Enter a card ID", "err"); return false; }
+  const existingOwner = state.idMap[val];
+  if (existingOwner !== undefined && existingOwner !== idx){
+    showToast(`ID already assigned to Lamp ${String(existingOwner+1).padStart(2,"0")}`, "err");
+    return false;
+  }
+  const prevId = state.lampToId[idx];
+  if (prevId) delete state.idMap[prevId];
+  state.idMap[val] = idx;
+  state.lampToId[idx] = val;
+  const l = lamps[idx];
+  l.idSprite.mat.opacity = 0.9;
+  l.idSprite.redraw(val, "#8fe9ff");
+  renderIdTable();
+  showToast(`Card ${val} linked to Lamp ${String(idx+1).padStart(2,"0")}`, "ok");
+  return true;
+}
+
+document.getElementById("assignConfirmBtn").addEventListener("click", ()=>{
+  const idx = state.learnSelected;
+  const val = assignIdInput.value.trim();
+  if (assignIdToLamp(idx, val)) cancelLearnSelection();
+});
+
+document.getElementById("clearAllIdsBtn").addEventListener("click", ()=>{
+  state.idMap = {};
+  state.lampToId = {};
+  lamps.forEach(l=>{ l.idSprite.mat.opacity = 0; l.idSprite.redraw("", "#8fe9ff"); });
+  renderIdTable();
+  showToast("All ID links cleared");
+});
+
+function renderIdTable(){
+  const body = document.getElementById("idTableBody");
+  body.innerHTML = "";
+  for (let i=0;i<NUM_LAMPS;i++){
+    const tr = document.createElement("tr");
+    const id = state.lampToId[i];
+    tr.className = id ? "assigned" : "unassigned";
+    tr.innerHTML = `<td>${id || "\u2014 unassigned \u2014"}</td><td>Lamp ${String(i+1).padStart(2,"0")}</td><td>${id ? '<span class="clear-id" data-idx="'+i+'">clear</span>' : ""}</td>`;
+    body.appendChild(tr);
+  }
+  body.querySelectorAll(".clear-id").forEach(el=>{
+    el.addEventListener("click", ()=>{
+      const i = Number(el.dataset.idx);
+      const id = state.lampToId[i];
+      if (id) delete state.idMap[id];
+      delete state.lampToId[i];
+      lamps[i].idSprite.mat.opacity = 0;
+      lamps[i].idSprite.redraw("", "#8fe9ff");
+      renderIdTable();
+    });
+  });
+}
+renderIdTable();
+
+/* ============================================================
+   GUEST DETAILS (name, profession, photo, audio per lamp) + welcome card
+   ============================================================ */
+const GUEST_STORAGE_KEY = "lampCeremonyGuests_v1";
+let guests = {};
+try {
+  const saved = localStorage.getItem(GUEST_STORAGE_KEY);
+  if (saved) guests = JSON.parse(saved);
+} catch(e){ guests = {}; }
+
+function saveGuestsToStorage(){
+  try { localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(guests)); }
+  catch(e){ showToast("Could not save guest data (storage full?)", "err"); }
+}
+
+/* Audio clips are stored in IndexedDB (not localStorage) since they can be
+   much larger than a compressed photo. Keyed by lamp index. */
+function openAudioDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open("lampCeremonyAudio", 1);
+    req.onupgradeneeded = ()=> req.result.createObjectStore("audio");
+    req.onsuccess = ()=> resolve(req.result);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function saveAudioBlob(index, blob){
+  const db = await openAudioDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction("audio", "readwrite");
+    tx.objectStore("audio").put(blob, index);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+async function loadAudioBlob(index){
+  const db = await openAudioDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction("audio", "readonly");
+    const req = tx.objectStore("audio").get(index);
+    req.onsuccess = ()=> resolve(req.result || null);
+    req.onerror = ()=> reject(req.error);
+  });
+}
+async function deleteAudioBlob(index){
+  const db = await openAudioDB();
+  return new Promise((resolve, reject)=>{
+    const tx = db.transaction("audio", "readwrite");
+    tx.objectStore("audio").delete(index);
+    tx.oncomplete = ()=> resolve();
+    tx.onerror = ()=> reject(tx.error);
+  });
+}
+
+const welcomeAudioPlayer = document.getElementById("welcomeAudioPlayer");
+async function playGuestAudio(index){
+  try {
+    const blob = await loadAudioBlob(index);
+    if (!blob) return;
+    stopGuestAudio();
+    duckBgMusic(true);
+    const url = URL.createObjectURL(blob);
+    welcomeAudioPlayer.src = url;
+    welcomeAudioPlayer._objectUrl = url;
+    welcomeAudioPlayer.currentTime = 0;
+    welcomeAudioPlayer.play().catch(()=> showToast("Tap anywhere once to allow audio playback", "err"));
+  } catch(e){ /* no audio for this guest, or storage unavailable - ignore */ }
+}
+function stopGuestAudio(){
+  welcomeAudioPlayer.pause();
+  if (welcomeAudioPlayer._objectUrl){ URL.revokeObjectURL(welcomeAudioPlayer._objectUrl); welcomeAudioPlayer._objectUrl = null; }
+  duckBgMusic(false);
+}
+
+let selectedGuestLamp = 0;
+let pendingPhotoDataUrl = null;
+let pendingAudioBlob = undefined; // undefined = no change, null = remove, File = new upload
+const guestLampGrid = document.getElementById("guestLampGrid");
+const guestLampBtns = [];
+for (let i=0;i<NUM_LAMPS;i++){
+  const b = document.createElement("div");
+  b.className = "lamp-toggle";
+  b.innerHTML = `<span class="n">${String(i+1).padStart(2,"0")}</span>`;
+  b.addEventListener("click", ()=> selectGuestLamp(i));
+  guestLampGrid.appendChild(b);
+  guestLampBtns.push(b);
+}
+
+function refreshGuestLampGrid(){
+  guestLampBtns.forEach((btn,i)=>{
+    btn.classList.toggle("on", !!guests[i]);
+    btn.style.boxShadow = (i === selectedGuestLamp) ? "0 0 0 2px var(--violet) inset" : "";
+  });
+}
+
+function setGuestAudioUI(hasAudio, blob){
+  const status = document.getElementById("guestAudioStatus");
+  const preview = document.getElementById("guestAudioPreview");
+  if (hasAudio && blob){
+    status.textContent = "Audio uploaded";
+    preview.src = URL.createObjectURL(blob);
+    preview.style.display = "block";
+  } else {
+    status.textContent = "No audio uploaded";
+    preview.removeAttribute("src");
+    preview.style.display = "none";
+  }
+}
+
+async function selectGuestLamp(i){
+  selectedGuestLamp = i;
+  pendingPhotoDataUrl = null;
+  pendingAudioBlob = undefined;
+  document.getElementById("guestEditingLabel").textContent = `Lamp ${String(i+1).padStart(2,"0")}`;
+  const g = guests[i];
+  document.getElementById("guestNameInput").value = g ? g.name : "";
+  document.getElementById("guestProfessionInput").value = g ? g.profession : "";
+  const preview = document.getElementById("guestPhotoPreview");
+  if (g && g.photo){ preview.src = g.photo; preview.style.display = "block"; }
+  else { preview.src = ""; preview.style.display = "none"; }
+  refreshGuestLampGrid();
+  try {
+    const blob = await loadAudioBlob(i);
+    if (selectedGuestLamp === i) setGuestAudioUI(!!blob, blob);
+  } catch(e){ setGuestAudioUI(false); }
+}
+
+document.getElementById("guestPhotoBtn").addEventListener("click", ()=> document.getElementById("guestPhotoInput").click());
+document.getElementById("guestPhotoInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const size = 260;
+      const c = document.createElement("canvas");
+      c.width = size; c.height = size;
+      const ctx = c.getContext("2d");
+      const scale = Math.max(size/img.width, size/img.height);
+      const w = img.width*scale, h = img.height*scale;
+      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
+      pendingPhotoDataUrl = c.toDataURL("image/jpeg", 0.85);
+      const preview = document.getElementById("guestPhotoPreview");
+      preview.src = pendingPhotoDataUrl;
+      preview.style.display = "block";
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById("guestAudioBtn").addEventListener("click", ()=> document.getElementById("guestAudioInput").click());
+document.getElementById("guestAudioInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  pendingAudioBlob = file;
+  setGuestAudioUI(true, file);
+});
+document.getElementById("guestAudioRemoveBtn").addEventListener("click", ()=>{
+  pendingAudioBlob = null;
+  setGuestAudioUI(false);
+});
+
+document.getElementById("guestSaveBtn").addEventListener("click", async ()=>{
+  const name = document.getElementById("guestNameInput").value.trim();
+  const profession = document.getElementById("guestProfessionInput").value.trim();
+  if (!name){ showToast("Enter a guest name", "err"); return; }
+  const existing = guests[selectedGuestLamp] || {};
+  guests[selectedGuestLamp] = {
+    name,
+    profession,
+    photo: pendingPhotoDataUrl || existing.photo || ""
+  };
+  saveGuestsToStorage();
+  refreshGuestLampGrid();
+
+  if (pendingAudioBlob === null){
+    try { await deleteAudioBlob(selectedGuestLamp); } catch(e){}
+  } else if (pendingAudioBlob){
+    try { await saveAudioBlob(selectedGuestLamp, pendingAudioBlob); }
+    catch(e){ showToast("Could not save audio file", "err"); }
+  }
+  pendingPhotoDataUrl = null;
+  pendingAudioBlob = undefined;
+  showToast(`Saved ${name} to Lamp ${String(selectedGuestLamp+1).padStart(2,"0")}`, "ok");
+});
+
+document.getElementById("guestRemoveBtn").addEventListener("click", async ()=>{
+  delete guests[selectedGuestLamp];
+  saveGuestsToStorage();
+  try { await deleteAudioBlob(selectedGuestLamp); } catch(e){}
+  selectGuestLamp(selectedGuestLamp);
+  showToast("Guest removed", "ok");
+});
+
+document.getElementById("guestPreviewBtn").addEventListener("click", ()=>{
+  const g = guests[selectedGuestLamp];
+  if (!g){ showToast("Save this guest first", "err"); return; }
+  queueWelcome(selectedGuestLamp);
+});
+
+selectGuestLamp(0);
+
+/* ============================================================
+   BACKGROUND MUSIC (uploaded once, plays/loops through the event)
+   ============================================================ */
+const BGM_KEY = "bgm";
+const bgMusicPlayer = document.getElementById("bgMusicPlayer");
+let musicVolume = 0.5;
+let musicDucked = false;
+bgMusicPlayer.loop = true;
+bgMusicPlayer.volume = musicVolume;
+
+function duckBgMusic(on){
+  musicDucked = on;
+  bgMusicPlayer.volume = on ? musicVolume * 0.15 : musicVolume;
+}
+
+function setMusicStatus(text){
+  document.getElementById("musicStatus").textContent = text;
+}
+
+async function loadBgMusicIntoPlayer(){
+  try {
+    const blob = await loadAudioBlob(BGM_KEY);
+    if (blob){
+      const url = URL.createObjectURL(blob);
+      bgMusicPlayer.src = url;
+      setMusicStatus("Music loaded \u2014 press Play to start");
+      return true;
+    } else {
+      setMusicStatus("No music uploaded");
+      return false;
+    }
+  } catch(e){
+    setMusicStatus("No music uploaded");
+    return false;
+  }
+}
+loadBgMusicIntoPlayer();
+
+document.getElementById("musicUploadBtn").addEventListener("click", ()=> document.getElementById("musicFileInput").click());
+document.getElementById("musicFileInput").addEventListener("change", async (e)=>{
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    await saveAudioBlob(BGM_KEY, file);
+    const url = URL.createObjectURL(file);
+    bgMusicPlayer.src = url;
+    setMusicStatus(`Loaded: ${file.name}`);
+    showToast("Background music saved", "ok");
+  } catch(err){
+    showToast("Could not save music file", "err");
+  }
+});
+
+document.getElementById("musicRemoveBtn").addEventListener("click", async ()=>{
+  try { await deleteAudioBlob(BGM_KEY); } catch(e){}
+  bgMusicPlayer.pause();
+  bgMusicPlayer.removeAttribute("src");
+  setMusicStatus("No music uploaded");
+  showToast("Background music removed", "ok");
+});
+
+document.getElementById("musicPlayBtn").addEventListener("click", ()=>{
+  if (!bgMusicPlayer.src){ showToast("Upload a music file first", "err"); return; }
+  bgMusicPlayer.play().catch(()=> showToast("Tap anywhere once to allow audio playback", "err"));
+});
+document.getElementById("musicPauseBtn").addEventListener("click", ()=> bgMusicPlayer.pause());
+
+document.getElementById("musicVolumeSlider").addEventListener("input", (e)=>{
+  musicVolume = parseFloat(e.target.value) / 100;
+  if (!musicDucked) bgMusicPlayer.volume = musicVolume;
+});
+
+document.getElementById("musicLoopCheckbox").addEventListener("change", (e)=>{
+  bgMusicPlayer.loop = e.target.checked;
+});
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+let toastTimer = null;
+function showToast(msg, kind){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "toast show" + (kind ? " " + kind : "");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove("show"), 2600);
+}
+
+/* ============================================================
+   RENDER LOOP
+   ============================================================ */
+let lastTime = performance.now();
+function animate(now){
+  requestAnimationFrame(animate);
+  const delta = Math.min(0.05, (now - lastTime) / 1000);
+  lastTime = now;
+
+  updateCamera(delta);
+  updateTraceAnimations(now);
+  updateLampVisuals(now);
+  updateTreeVisuals(now);
+
+  scene.traverse(o=>{
+    if (o.userData && o.userData.isStarfield) o.material.uniforms.uTime.value = now * 0.001;
+  });
+
+  if (assignInline.classList.contains("show") && state.learnSelected !== null){
+    positionAssignInline(state.learnSelected);
+  }
+
+  composer.render();
+}
+requestAnimationFrame(animate);
+
+updateStatusBar();
+document.getElementById("loadingOverlay").classList.add("hidden");
+setTimeout(()=> showToast("Drag to look around \u2022 scroll to zoom", "ok"), 700);
+
+})();
+</script>
+</body>
+</html>
